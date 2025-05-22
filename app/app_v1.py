@@ -3,6 +3,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.controllers.exercise_controller import exercise_controller
 from app.controllers.scraper_controller import scraper_controller
 from app.controllers.training_controller import training_controller
 from app.models.error_response import ErrorResponse
@@ -37,11 +38,11 @@ def error_response_handler(request: Request, error: Exception) -> JSONResponse:
                 code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 status="error",
                 message="Internal Server Error",
-                errors=[str(error)],
             )
         ),
     )
 
 
-v1.include_router(training_controller)
 v1.include_router(scraper_controller)
+v1.include_router(training_controller)
+v1.include_router(exercise_controller)

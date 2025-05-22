@@ -1,5 +1,4 @@
 import asyncio
-import logging
 
 from fastapi import APIRouter, status
 from fastapi.responses import JSONResponse
@@ -18,7 +17,7 @@ scraper_controller = APIRouter(
     description="This endpoint starts the scraping process.",
 )
 async def start_scraping():
-    logging.info("Starting scraping process...")
+    print("Starting scraping process...")
     asyncio.create_task(scrape_data_service())
     return JSONResponse(
         content={"message": "Training process started."},

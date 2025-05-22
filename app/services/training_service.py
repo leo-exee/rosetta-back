@@ -1,4 +1,3 @@
-import logging
 import platform
 
 import pandas as pd
@@ -159,10 +158,10 @@ class ExerciseModelTrainer:
             inputs, max_length=512, truncation=True, padding=True
         )
 
-        with self.tokenizer.as_target_tokenizer():
-            labels = self.tokenizer(
-                targets, max_length=128, truncation=True, padding=True
-            )
+        # Use text_target instead of as_target_tokenizer (deprecated)
+        labels = self.tokenizer(
+            text_target=targets, max_length=128, truncation=True, padding=True
+        )
 
         model_inputs["labels"] = labels["input_ids"]
         return model_inputs
@@ -188,7 +187,8 @@ class ExerciseModelTrainer:
             logging_dir=f"{output_dir}/logs",
             logging_steps=100,
             eval_steps=500,
-            save_steps=1000,
+            save_steps=500,  # Match with eval_steps
+            eval_strategy="steps",  # Use eval_strategy instead of evaluation_strategy
             save_strategy="steps",
             load_best_model_at_end=True,
             metric_for_best_model="eval_loss",
@@ -227,8 +227,8 @@ class ExerciseModelTrainer:
 async def train_model_service():
     df = pd.read_csv("data/raw/scraped_data.csv")
     trainer = ExerciseModelTrainer()
-    logging.info("Preparing training data...")
+    print("Preparing training data...")
     dataset = trainer.prepare_training_data(df)
-    logging.info("Training model...")
+    print("Training model...")
     trainer.train_model(dataset)
-    logging.info("Training completed.")
+    print("Training completed.")

@@ -1,5 +1,4 @@
 import asyncio
-import logging
 
 from fastapi import APIRouter, status
 from fastapi.responses import JSONResponse
@@ -18,7 +17,7 @@ training_controller = APIRouter(
     description="This endpoint starts the training process for the model.",
 )
 async def start_training():
-    logging.info("Starting training process...")
+    print("Starting training process...")
     asyncio.create_task(train_model_service())
     return JSONResponse(
         content={"message": "Training process started."},
