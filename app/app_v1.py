@@ -3,7 +3,8 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.controllers.train_controller import train_controller
+from app.controllers.scraper_controller import scraper_controller
+from app.controllers.training_controller import training_controller
 from app.models.error_response import ErrorResponse
 
 v1 = FastAPI(
@@ -42,4 +43,5 @@ def error_response_handler(request: Request, error: Exception) -> JSONResponse:
     )
 
 
-v1.include_router(train_controller)
+v1.include_router(training_controller)
+v1.include_router(scraper_controller)

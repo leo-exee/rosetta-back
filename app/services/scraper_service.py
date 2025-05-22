@@ -271,3 +271,8 @@ class DatasetBuilder:
             return "intermediate"
         else:
             return "advanced"
+
+
+async def scrape_data_service():
+    dataset_builder = DatasetBuilder()
+    dataset_builder.build_complete_dataset()
