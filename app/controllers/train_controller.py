@@ -3,7 +3,7 @@ import logging
 
 from fastapi import APIRouter
 
-from app.services.training_service import train_service
+from app.services.training_service import train_model_service
 
 train_controller = APIRouter(
     prefix="/train",
@@ -18,4 +18,4 @@ train_controller = APIRouter(
 )
 async def start_training():
     logging.info("Starting training process...")
-    asyncio.create_task(train_service())
+    asyncio.create_task(train_model_service())

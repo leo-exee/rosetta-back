@@ -224,7 +224,7 @@ class ExerciseModelTrainer:
         return trainer
 
 
-async def train_service():
+async def train_model_service():
     df = pd.read_csv("data/raw/scraped_data.csv")
     trainer = ExerciseModelTrainer()
     logging.info("Preparing training data...")
