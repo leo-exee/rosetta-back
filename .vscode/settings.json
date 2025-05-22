@@ -1,0 +1,35 @@
+{
+  "editor.insertSpaces": true,
+  "editor.tabSize": 4,
+  "editor.formatOnSave": true,
+  "python.analysis.typeCheckingMode": "basic",
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter",
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit"
+    }
+  },
+  "files.exclude": {
+    "**/*.pyc": { "when": "$(basename).py" },
+    "**/__pycache__": true
+  },
+  "cSpell.words": [
+    "bson",
+    "dateutil",
+    "fastapi",
+    "hiboutik",
+    "hub",
+    "jsonable_encoder",
+    "magasin",
+    "magasins",
+    "notif",
+    "polyfactory",
+    "posc",
+    "pydantic",
+    "pymongo",
+    "relativedelta",
+    "vonage",
+    "xlpos",
+    "zelty"
+  ]
+}

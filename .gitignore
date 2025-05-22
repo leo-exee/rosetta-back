@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments
+.env/
+.venv/
+env/
+venv/
+
+# Editor/IDE
+.idea/
+*.swp
+
+# Test and coverage
+.coverage
+htmlcov/
+.tox/
+.pytest_cache/
+.cache/
+
+# Ruff, Black, MyPy
+.mypy_cache/
+.dmypy.json
+ruff_cache/
+.black/
+
+# FastAPI
+instance/
+*.db
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
