@@ -41,6 +41,7 @@ instance/
 .DS_Store
 Thumbs.db
 
-# Datasets
+# Specific directories
 data/
 datasets/
+models/
