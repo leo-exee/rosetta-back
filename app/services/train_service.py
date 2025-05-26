@@ -310,7 +310,7 @@ class AIModelsTrainer:
         train_tokenized = self.tokenize_seq2seq_data(train_dataset, tokenizer, config)
         val_tokenized = self.tokenize_seq2seq_data(val_dataset, tokenizer, config)
 
-        # Configuration d'entraînement - CORRIGÉ: eval_strategy au lieu de evaluation_strategy
+        # Configuration d'entraînement - CORRIGÉ: save_steps doit être un multiple de eval_steps
         training_args = Seq2SeqTrainingArguments(
             output_dir=str(self.base_output_dir / model_name),
             num_train_epochs=3,
@@ -321,8 +321,8 @@ class AIModelsTrainer:
             logging_dir=str(self.base_output_dir / model_name / "logs"),
             logging_steps=50,
             eval_steps=200,
-            save_steps=500,
-            eval_strategy="steps",  # CORRIGÉ: était evaluation_strategy
+            save_steps=400,  # CORRIGÉ: 400 est un multiple de 200
+            eval_strategy="steps",
             save_strategy="steps",
             load_best_model_at_end=True,
             metric_for_best_model="exact_match",
@@ -393,7 +393,7 @@ class AIModelsTrainer:
             val_dataset, tokenizer, config
         )
 
-        # Configuration d'entraînement - CORRIGÉ: eval_strategy au lieu de evaluation_strategy
+        # Configuration d'entraînement - CORRIGÉ: save_steps doit être un multiple de eval_steps
         training_args = TrainingArguments(
             output_dir=str(self.base_output_dir / model_name),
             num_train_epochs=3,
@@ -404,8 +404,8 @@ class AIModelsTrainer:
             logging_dir=str(self.base_output_dir / model_name / "logs"),
             logging_steps=50,
             eval_steps=200,
-            save_steps=500,
-            eval_strategy="steps",  # CORRIGÉ: était evaluation_strategy
+            save_steps=400,  # CORRIGÉ: 400 est un multiple de 200
+            eval_strategy="steps",
             save_strategy="steps",
             load_best_model_at_end=True,
             metric_for_best_model="accuracy",
