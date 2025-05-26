@@ -310,19 +310,19 @@ class AIModelsTrainer:
         train_tokenized = self.tokenize_seq2seq_data(train_dataset, tokenizer, config)
         val_tokenized = self.tokenize_seq2seq_data(val_dataset, tokenizer, config)
 
-        # Configuration d'entraînement
+        # Configuration d'entraînement - CORRIGÉ: eval_strategy au lieu de evaluation_strategy
         training_args = Seq2SeqTrainingArguments(
             output_dir=str(self.base_output_dir / model_name),
             num_train_epochs=3,
-            per_device_train_batch_size=8,
-            per_device_eval_batch_size=8,
+            per_device_train_batch_size=4,  # Réduit pour éviter les problèmes de mémoire
+            per_device_eval_batch_size=4,  # Réduit pour éviter les problèmes de mémoire
             warmup_steps=100,
             weight_decay=0.01,
             logging_dir=str(self.base_output_dir / model_name / "logs"),
             logging_steps=50,
             eval_steps=200,
             save_steps=500,
-            evaluation_strategy="steps",
+            eval_strategy="steps",  # CORRIGÉ: était evaluation_strategy
             save_strategy="steps",
             load_best_model_at_end=True,
             metric_for_best_model="exact_match",
@@ -330,6 +330,7 @@ class AIModelsTrainer:
             predict_with_generate=True,
             generation_max_length=config["max_target_length"],
             remove_unused_columns=False,
+            dataloader_pin_memory=False,  # Ajouté pour éviter les problèmes de mémoire
         )
 
         # Data collator
@@ -392,23 +393,24 @@ class AIModelsTrainer:
             val_dataset, tokenizer, config
         )
 
-        # Configuration d'entraînement
+        # Configuration d'entraînement - CORRIGÉ: eval_strategy au lieu de evaluation_strategy
         training_args = TrainingArguments(
             output_dir=str(self.base_output_dir / model_name),
             num_train_epochs=3,
-            per_device_train_batch_size=16,
-            per_device_eval_batch_size=16,
+            per_device_train_batch_size=8,  # Réduit pour éviter les problèmes de mémoire
+            per_device_eval_batch_size=8,  # Réduit pour éviter les problèmes de mémoire
             warmup_steps=100,
             weight_decay=0.01,
             logging_dir=str(self.base_output_dir / model_name / "logs"),
             logging_steps=50,
             eval_steps=200,
             save_steps=500,
-            evaluation_strategy="steps",
+            eval_strategy="steps",  # CORRIGÉ: était evaluation_strategy
             save_strategy="steps",
             load_best_model_at_end=True,
             metric_for_best_model="accuracy",
             greater_is_better=True,
+            dataloader_pin_memory=False,  # Ajouté pour éviter les problèmes de mémoire
         )
 
         # Trainer
@@ -462,6 +464,7 @@ class AIModelsTrainer:
                     model=str(model_path),
                     tokenizer=str(model_path),
                     max_length=config["max_target_length"],
+                    device=-1,  # Force CPU pour éviter les problèmes de GPU
                 )
 
                 # Préparer les données de test
@@ -493,6 +496,7 @@ class AIModelsTrainer:
                     "text-classification",
                     model=str(model_path),
                     tokenizer=str(model_path),
+                    device=-1,  # Force CPU pour éviter les problèmes de GPU
                 )
 
                 test_dataset = self.prepare_definition_matcher_data(test_data)
