@@ -11,7 +11,10 @@
   },
   "files.exclude": {
     "**/*.pyc": { "when": "$(basename).py" },
-    "**/__pycache__": true
+    "**/__pycache__": true,
+    "**/.pytest_cache": true,
+    "**/.mypy_cache": true,
+    "**/.ruff_cache": true,
   },
   "cSpell.words": [
     "bson",
