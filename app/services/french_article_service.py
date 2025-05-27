@@ -20,17 +20,17 @@ FRENCH_SOURCES = {
         "https://www.journaldunet.com/",
         "https://www.01net.com/",
         "https://www.numerama.com/",
-        "https://www.lemonde.fr/pixels/",
+        "https://www.lemonde.fr/pixels/",  # Bloque le scraping
         "https://www.usine-digitale.fr/",
         "https://www.silicon.fr/",
     ],
     "work": [
         "https://www.challenges.fr/",
-        "https://www.lesechos.fr/",
+        "https://www.lesechos.fr/",  # Bloque le scraping
         "https://www.capital.fr/",
-        "https://business.lesechos.fr/",
+        "https://business.lesechos.fr/",  # Bloque le scraping
         "https://www.hbrfrance.fr/",
-        "https://start.lesechos.fr/",
+        "https://start.lesechos.fr/",  # Bloque le scraping
     ],
     "travel": [
         "https://www.routard.com/",
@@ -38,7 +38,7 @@ FRENCH_SOURCES = {
         "https://www.petitfute.com/",
         "https://www.partir.com/",
         "https://www.lonelyplanet.fr/",
-        "https://www.voyageurs-du-net.com/",
+        "https://www.voyageurs-du-net.com/",  # Bloque le scraping
     ],
     "cooking": [
         "https://www.marmiton.org/",
