@@ -65,7 +65,7 @@ class FrenchAIModelsTrainer:
         self.french_training_stats = {}
 
     def load_french_datasets(
-            self, dataset_dir: str = "datasets/training_fr"
+        self, dataset_dir: str = "datasets/training_fr"
     ) -> dict[str, DatasetDict]:
         """Charge tous les datasets d'entraînement français"""
         logger.info("📚 Chargement des datasets français...")
@@ -88,7 +88,9 @@ class FrenchAIModelsTrainer:
                     with open(split_file, encoding="utf-8") as f:
                         data = [json.loads(line) for line in f if line.strip()]
                     splits[split] = data
-                    logger.info(f"✅ {model_name}/{split} français: {len(data)} exemples")
+                    logger.info(
+                        f"✅ {model_name}/{split} français: {len(data)} exemples"
+                    )
                 else:
                     logger.warning(f"⚠️ Fichier français manquant: {split_file}")
 
@@ -149,9 +151,7 @@ class FrenchAIModelsTrainer:
             scrambled_words, target_sentence = output_parts
 
             # Input pour le modèle: instruction française + mots mélangés
-            model_input = (
-                f"Contexte: {context}, Niveau: {level}. Remettez en ordre: {scrambled_words}"
-            )
+            model_input = f"Contexte: {context}, Niveau: {level}. Remettez en ordre: {scrambled_words}"
 
             # Target: phrase française correcte
             model_target = target_sentence
@@ -187,8 +187,8 @@ class FrenchAIModelsTrainer:
             ]  # Convert to 0-based
 
             # Créer des exemples pour chaque association mot français-définition
-            for i, (word, correct_def_idx) in enumerate(
-                    zip(words, matches, strict=True)
+            for _i, (word, correct_def_idx) in enumerate(
+                zip(words, matches, strict=True)
             ):
                 # Input: contexte français + mot + toutes les définitions
                 all_defs = " | ".join(definitions)
@@ -203,7 +203,7 @@ class FrenchAIModelsTrainer:
         return Dataset.from_dict({"input_text": inputs, "labels": labels})
 
     def tokenize_french_seq2seq_data(
-            self, dataset: Dataset, tokenizer, config: dict
+        self, dataset: Dataset, tokenizer, config: dict
     ) -> Dataset:
         """Tokenise les données françaises pour les modèles seq2seq"""
 
@@ -230,7 +230,7 @@ class FrenchAIModelsTrainer:
         return dataset.map(tokenize_function, batched=True)
 
     def tokenize_french_classification_data(
-            self, dataset: Dataset, tokenizer, config: dict
+        self, dataset: Dataset, tokenizer, config: dict
     ) -> Dataset:
         """Tokenise les données françaises pour le modèle de classification"""
 
@@ -288,7 +288,7 @@ class FrenchAIModelsTrainer:
         }
 
     def train_french_seq2seq_model(
-            self, model_name: str, train_dataset: Dataset, val_dataset: Dataset
+        self, model_name: str, train_dataset: Dataset, val_dataset: Dataset
     ) -> tuple[object, object]:
         """Entraîne un modèle seq2seq français (mT5)"""
         logger.info(f"🚀 Entraînement du modèle français {model_name}...")
@@ -307,8 +307,12 @@ class FrenchAIModelsTrainer:
         self.current_tokenizer = tokenizer
 
         # Tokeniser les données françaises
-        train_tokenized = self.tokenize_french_seq2seq_data(train_dataset, tokenizer, config)
-        val_tokenized = self.tokenize_french_seq2seq_data(val_dataset, tokenizer, config)
+        train_tokenized = self.tokenize_french_seq2seq_data(
+            train_dataset, tokenizer, config
+        )
+        val_tokenized = self.tokenize_french_seq2seq_data(
+            val_dataset, tokenizer, config
+        )
 
         # Configuration d'entraînement adaptée au français
         training_args = Seq2SeqTrainingArguments(
@@ -377,7 +381,7 @@ class FrenchAIModelsTrainer:
         return model, tokenizer
 
     def train_french_classification_model(
-            self, model_name: str, train_dataset: Dataset, val_dataset: Dataset
+        self, model_name: str, train_dataset: Dataset, val_dataset: Dataset
     ) -> tuple[object, object]:
         """Entraîne un modèle de classification français (CamemBERT)"""
         logger.info(f"🚀 Entraînement du modèle français {model_name}...")
@@ -481,7 +485,9 @@ class FrenchAIModelsTrainer:
                 if model_name == "fill_in_blank":
                     test_dataset = self.prepare_french_fill_in_blank_data(test_data)
                 else:  # sentence_scrambler
-                    test_dataset = self.prepare_french_sentence_scrambler_data(test_data)
+                    test_dataset = self.prepare_french_sentence_scrambler_data(
+                        test_data
+                    )
 
                 # Évaluer sur échantillon français
                 correct = 0
@@ -507,7 +513,7 @@ class FrenchAIModelsTrainer:
                     "accuracy": accuracy,
                     "total_tested": total,
                     "correct_predictions": correct,
-                    "language": "french"
+                    "language": "french",
                 }
 
             else:  # classification
@@ -544,11 +550,13 @@ class FrenchAIModelsTrainer:
                     "accuracy": accuracy,
                     "total_tested": total,
                     "correct_predictions": correct,
-                    "language": "french"
+                    "language": "french",
                 }
 
         except Exception as e:
-            logger.error(f"❌ Erreur lors de l'évaluation française de {model_name}: {e}")
+            logger.error(
+                f"❌ Erreur lors de l'évaluation française de {model_name}: {e}"
+            )
             return {"error": str(e), "language": "french"}
 
     def train_all_french_models(self, dataset_dir: str = "datasets/training_fr"):
@@ -557,7 +565,9 @@ class FrenchAIModelsTrainer:
 
         # Vérifier la disponibilité de GPU
         if torch.cuda.is_available():
-            logger.info(f"🔥 GPU détecté pour l'entraînement français: {torch.cuda.get_device_name()}")
+            logger.info(
+                f"🔥 GPU détecté pour l'entraînement français: {torch.cuda.get_device_name()}"
+            )
         else:
             logger.info("💻 Entraînement français sur CPU")
 
@@ -578,8 +588,12 @@ class FrenchAIModelsTrainer:
 
                 # Préparer les datasets français
                 if model_name == "fill_in_blank":
-                    train_dataset = self.prepare_french_fill_in_blank_data(model_data["train"])
-                    val_dataset = self.prepare_french_fill_in_blank_data(model_data["val"])
+                    train_dataset = self.prepare_french_fill_in_blank_data(
+                        model_data["train"]
+                    )
+                    val_dataset = self.prepare_french_fill_in_blank_data(
+                        model_data["val"]
+                    )
                 elif model_name == "sentence_scrambler":
                     train_dataset = self.prepare_french_sentence_scrambler_data(
                         model_data["train"]
@@ -613,14 +627,20 @@ class FrenchAIModelsTrainer:
 
                 # Évaluer sur les données de test françaises si disponibles
                 if "test" in model_data:
-                    eval_results = self.evaluate_french_model(model_name, model_data["test"])
-                    self.french_training_stats[model_name]["test_results"] = eval_results
+                    eval_results = self.evaluate_french_model(
+                        model_name, model_data["test"]
+                    )
+                    self.french_training_stats[model_name][
+                        "test_results"
+                    ] = eval_results
                     logger.info(
                         f"📊 Résultats de test français pour {model_name}: {eval_results}"
                     )
 
             except Exception as e:
-                logger.error(f"❌ Erreur lors de l'entraînement français de {model_name}: {e}")
+                logger.error(
+                    f"❌ Erreur lors de l'entraînement français de {model_name}: {e}"
+                )
                 continue
 
         # Rapport final français
@@ -646,7 +666,8 @@ class FrenchAIModelsTrainer:
                 logger.info(f"   Précision sur test français: {test_acc:.2%}")
 
         logger.info(
-            "\n✅ Tous les modèles français sont sauvegardés dans: " + str(self.base_output_dir)
+            "\n✅ Tous les modèles français sont sauvegardés dans: "
+            + str(self.base_output_dir)
         )
 
     def save_french_training_config(self):
@@ -661,8 +682,8 @@ class FrenchAIModelsTrainer:
             "target_learners": "english_speakers",
             "models_used": {
                 "seq2seq": "google/mt5-small (multilingual T5)",
-                "classification": "camembert-base (French BERT)"
-            }
+                "classification": "camembert-base (French BERT)",
+            },
         }
 
         with open(config_file, "w", encoding="utf-8") as f:
@@ -684,7 +705,9 @@ def main():
     # Sauvegarder la configuration française
     trainer.save_french_training_config()
 
-    logger.info("🎉 Entraînement français terminé ! Les modèles sont prêts à générer des exercices.")
+    logger.info(
+        "🎉 Entraînement français terminé ! Les modèles sont prêts à générer des exercices."
+    )
 
     return trained_models
 

@@ -24,7 +24,9 @@ class FrenchKeywordExtractor:
             logger.info(f"✅ Modèle spaCy français '{model_name}' chargé avec succès")
         except OSError:
             logger.error(f"❌ Modèle spaCy français '{model_name}' non trouvé")
-            logger.info("💡 Installez-le avec: python -m spacy download fr_core_news_sm")
+            logger.info(
+                "💡 Installez-le avec: python -m spacy download fr_core_news_sm"
+            )
             raise
 
         # Configuration pour l'extraction française
@@ -38,27 +40,114 @@ class FrenchKeywordExtractor:
         # Mots-outils français à ignorer (stop words personnalisés)
         self.french_blacklist = {
             # Verbes très courants
-            "être", "avoir", "faire", "dire", "aller", "voir", "savoir", "prendre",
-            "venir", "vouloir", "pouvoir", "falloir", "devoir", "croire", "trouver",
-            "donner", "parler", "aimer", "porter", "laisser", "entendre", "demander",
-            "rester", "passer", "arriver", "entrer", "monter", "sortir", "partir",
-            "tenir", "finir", "jouer", "tourner", "servir", "ouvrir", "mettre",
-
+            "être",
+            "avoir",
+            "faire",
+            "dire",
+            "aller",
+            "voir",
+            "savoir",
+            "prendre",
+            "venir",
+            "vouloir",
+            "pouvoir",
+            "falloir",
+            "devoir",
+            "croire",
+            "trouver",
+            "donner",
+            "parler",
+            "aimer",
+            "porter",
+            "laisser",
+            "entendre",
+            "demander",
+            "rester",
+            "passer",
+            "arriver",
+            "entrer",
+            "monter",
+            "sortir",
+            "partir",
+            "tenir",
+            "finir",
+            "jouer",
+            "tourner",
+            "servir",
+            "ouvrir",
+            "mettre",
             # Noms très génériques
-            "année", "temps", "jour", "moment", "façon", "chose", "cas", "part",
-            "lieu", "place", "fois", "point", "nombre", "partie", "côté", "main",
-            "gens", "homme", "femme", "enfant", "personne", "monde", "pays",
-            "ville", "maison", "école", "travail", "problème", "question", "vie",
-
+            "année",
+            "temps",
+            "jour",
+            "moment",
+            "façon",
+            "chose",
+            "cas",
+            "part",
+            "lieu",
+            "place",
+            "fois",
+            "point",
+            "nombre",
+            "partie",
+            "côté",
+            "main",
+            "gens",
+            "homme",
+            "femme",
+            "enfant",
+            "personne",
+            "monde",
+            "pays",
+            "ville",
+            "maison",
+            "école",
+            "travail",
+            "problème",
+            "question",
+            "vie",
             # Adjectifs très courants
-            "nouveau", "premier", "dernier", "long", "grand", "petit", "autre",
-            "vieux", "beau", "gros", "jeune", "bon", "mauvais", "français",
-            "national", "international", "public", "privé", "social", "politique",
-            "économique", "important", "différent", "possible", "certain",
-
+            "nouveau",
+            "premier",
+            "dernier",
+            "long",
+            "grand",
+            "petit",
+            "autre",
+            "vieux",
+            "beau",
+            "gros",
+            "jeune",
+            "bon",
+            "mauvais",
+            "français",
+            "national",
+            "international",
+            "public",
+            "privé",
+            "social",
+            "politique",
+            "économique",
+            "important",
+            "différent",
+            "possible",
+            "certain",
             # Déterminants et pronoms non captés par spaCy
-            "tout", "tous", "toute", "toutes", "chaque", "plusieurs", "quelque",
-            "aucun", "même", "tel", "cette", "cela", "celui", "celle",
+            "tout",
+            "tous",
+            "toute",
+            "toutes",
+            "chaque",
+            "plusieurs",
+            "quelque",
+            "aucun",
+            "même",
+            "tel",
+            "cette",
+            "cela",
+            "celui",
+            "celle",
         }
 
     def clean_french_text(self, text: str) -> str:
@@ -73,7 +162,9 @@ class FrenchKeywordExtractor:
         text = re.sub(r"\s+", " ", text)
         return text.strip()
 
-    def extract_french_keywords(self, text: str, top_k: int = 30) -> list[dict[str, any]]:
+    def extract_french_keywords(
+        self, text: str, top_k: int = 30
+    ) -> list[dict[str, any]]:
         """
         Extrait les mots-clés français d'un texte avec spaCy
         """
@@ -88,12 +179,12 @@ class FrenchKeywordExtractor:
         for token in doc:
             # Filtres de base pour le français
             if (
-                    token.is_stop
-                    or token.is_punct
-                    or token.is_space
-                    or len(token.text) < self.min_word_length
-                    or len(token.text) > self.max_word_length
-                    or token.pos_ not in self.valid_pos
+                token.is_stop
+                or token.is_punct
+                or token.is_space
+                or len(token.text) < self.min_word_length
+                or len(token.text) > self.max_word_length
+                or token.pos_ not in self.valid_pos
             ):
                 continue
 
@@ -144,7 +235,7 @@ class FrenchKeywordExtractor:
         return french_keywords[:top_k]
 
     def calculate_french_importance_score(
-            self, word: str, info: dict, doc_length: int
+        self, word: str, info: dict, doc_length: int
     ) -> float:
         """
         Calcule un score d'importance pour un mot-clé français
@@ -168,15 +259,29 @@ class FrenchKeywordExtractor:
 
         # Bonus pour les mots avec suffixes français complexes
         complex_suffixes = [
-            "tion", "sion", "isme", "ique", "eur", "euse", "teur", "trice",
-            "ance", "ence", "ité", "ment", "able", "ible"
+            "tion",
+            "sion",
+            "isme",
+            "ique",
+            "eur",
+            "euse",
+            "teur",
+            "trice",
+            "ance",
+            "ence",
+            "ité",
+            "ment",
+            "able",
+            "ible",
         ]
-        suffix_bonus = 0.2 if any(word.endswith(suffix) for suffix in complex_suffixes) else 0
+        suffix_bonus = (
+            0.2 if any(word.endswith(suffix) for suffix in complex_suffixes) else 0
+        )
 
         return base_score + length_bonus + pos_bonus + suffix_bonus
 
     def classify_french_difficulty_level(
-            self, word: str, context: str, article_text: str
+        self, word: str, context: str, article_text: str
     ) -> str:
         """
         Classifie le niveau de difficulté d'un mot français pour apprenants anglophones
@@ -191,8 +296,20 @@ class FrenchKeywordExtractor:
 
         # 2. Complexité morphologique française
         complex_endings = [
-            "tion", "sion", "ment", "isme", "ique", "eur", "euse",
-            "teur", "trice", "ance", "ence", "ité", "able", "ible"
+            "tion",
+            "sion",
+            "ment",
+            "isme",
+            "ique",
+            "eur",
+            "euse",
+            "teur",
+            "trice",
+            "ance",
+            "ence",
+            "ité",
+            "able",
+            "ible",
         ]
 
         morphology_score = 1
@@ -218,25 +335,48 @@ class FrenchKeywordExtractor:
         # 4. Spécificité du domaine français
         domain_patterns = {
             "it": [
-                r".*logiciel.*", r".*numérique.*", r".*informatique.*",
-                r".*technolog.*", r".*algorithme.*", r".*données.*",
-                r".*développ.*", r".*program.*", r".*système.*"
+                r".*logiciel.*",
+                r".*numérique.*",
+                r".*informatique.*",
+                r".*technolog.*",
+                r".*algorithme.*",
+                r".*données.*",
+                r".*développ.*",
+                r".*program.*",
+                r".*système.*",
             ],
             "work": [
-                r".*entreprise.*", r".*management.*", r".*stratégie.*",
-                r".*commercial.*", r".*économique.*", r".*professionnel.*",
-                r".*gestio.*", r".*direction.*", r".*business.*"
+                r".*entreprise.*",
+                r".*management.*",
+                r".*stratégie.*",
+                r".*commercial.*",
+                r".*économique.*",
+                r".*professionnel.*",
+                r".*gestio.*",
+                r".*direction.*",
+                r".*business.*",
             ],
             "travel": [
-                r".*destination.*", r".*tourisme.*", r".*voyage.*",
-                r".*culture.*", r".*patrimoine.*", r".*découverte.*",
-                r".*aventure.*", r".*exploration.*"
+                r".*destination.*",
+                r".*tourisme.*",
+                r".*voyage.*",
+                r".*culture.*",
+                r".*patrimoine.*",
+                r".*découverte.*",
+                r".*aventure.*",
+                r".*exploration.*",
             ],
             "cooking": [
-                r".*cuisine.*", r".*gastronomie.*", r".*ingrédient.*",
-                r".*recette.*", r".*culinaire.*", r".*chef.*",
-                r".*plat.*", r".*saveur.*", r".*préparation.*"
-            ]
+                r".*cuisine.*",
+                r".*gastronomie.*",
+                r".*ingrédient.*",
+                r".*recette.*",
+                r".*culinaire.*",
+                r".*chef.*",
+                r".*plat.*",
+                r".*saveur.*",
+                r".*préparation.*",
+            ],
         }
 
         domain_score = 1
@@ -247,7 +387,9 @@ class FrenchKeywordExtractor:
                     break
 
         # 5. Score final
-        final_score = (length_score + morphology_score + article_difficulty + domain_score) / 4
+        final_score = (
+            length_score + morphology_score + article_difficulty + domain_score
+        ) / 4
 
         if final_score <= 1.5:
             return "beginner"
@@ -256,7 +398,9 @@ class FrenchKeywordExtractor:
         else:
             return "advanced"
 
-    def process_french_articles_file(self, articles_file: str, context: str) -> list[dict]:
+    def process_french_articles_file(
+        self, articles_file: str, context: str
+    ) -> list[dict]:
         """
         Traite un fichier d'articles français JSONL et extrait les mots-clés
         """
@@ -328,8 +472,8 @@ class FrenchKeywordExtractor:
 
             # Garder le meilleur exemple de chaque mot
             if (
-                    word not in final_keywords
-                    or kw["importance_score"] > final_keywords[word]["importance_score"]
+                word not in final_keywords
+                or kw["importance_score"] > final_keywords[word]["importance_score"]
             ):
                 final_keywords[word] = kw
 
@@ -337,7 +481,9 @@ class FrenchKeywordExtractor:
         result = list(final_keywords.values())
         result.sort(key=lambda x: x["global_frequency"], reverse=True)
 
-        logger.info(f"🎯 {len(result)} mots-clés français uniques extraits pour '{context}'")
+        logger.info(
+            f"🎯 {len(result)} mots-clés français uniques extraits pour '{context}'"
+        )
         return result
 
     def save_french_keywords(self, keywords: list[dict], output_file: str):
@@ -347,7 +493,9 @@ class FrenchKeywordExtractor:
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(keywords, f, ensure_ascii=False, indent=2)
 
-        logger.info(f"💾 {len(keywords)} mots-clés français sauvegardés dans {output_file}")
+        logger.info(
+            f"💾 {len(keywords)} mots-clés français sauvegardés dans {output_file}"
+        )
 
 
 def main():

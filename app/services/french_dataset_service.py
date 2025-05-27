@@ -107,7 +107,9 @@ class FrenchDatasetGenerator:
                                 }
                             )
 
-        logger.info(f"📝 {len(dataset)} exemples français générés pour Fill-in-the-Blank")
+        logger.info(
+            f"📝 {len(dataset)} exemples français générés pour Fill-in-the-Blank"
+        )
         return dataset
 
     def generate_french_sentence_scrambler_dataset(self, data: dict) -> list[dict]:
@@ -131,7 +133,9 @@ class FrenchDatasetGenerator:
                         # Ajuster la complexité selon le niveau
                         complexity_factor = self.get_complexity_factor(level)
 
-                        if self.is_french_sentence_appropriate_for_level(sentence, level):
+                        if self.is_french_sentence_appropriate_for_level(
+                            sentence, level
+                        ):
                             scrambled = self.scramble_french_sentence(
                                 sentence, complexity_factor
                             )
@@ -150,7 +154,9 @@ class FrenchDatasetGenerator:
                                 }
                             )
 
-        logger.info(f"🔀 {len(dataset)} exemples français générés pour Sentence Scrambler")
+        logger.info(
+            f"🔀 {len(dataset)} exemples français générés pour Sentence Scrambler"
+        )
         return dataset
 
     def generate_french_definition_matcher_dataset(self, data: dict) -> list[dict]:
@@ -189,7 +195,9 @@ class FrenchDatasetGenerator:
                     for word_data in selected_words:
                         words.append(word_data["word"])
                         # Prendre la meilleure définition française disponible
-                        best_def = self.get_best_french_definition(word_data["definitions"])
+                        best_def = self.get_best_french_definition(
+                            word_data["definitions"]
+                        )
                         definitions.append(best_def)
 
                     # Mélanger les définitions pour créer l'exercice
@@ -217,11 +225,13 @@ class FrenchDatasetGenerator:
                         }
                     )
 
-        logger.info(f"🎯 {len(dataset)} exemples français générés pour Definition Matcher")
+        logger.info(
+            f"🎯 {len(dataset)} exemples français générés pour Definition Matcher"
+        )
         return dataset
 
     def extract_french_suitable_sentences(
-            self, text: str, min_words: int = 8, max_words: int = 30
+        self, text: str, min_words: int = 8, max_words: int = 30
     ) -> list[str]:
         """Extrait des phrases françaises appropriées pour les exercices"""
         doc = self.nlp(text)
@@ -233,11 +243,11 @@ class FrenchDatasetGenerator:
 
             # Filtres de qualité pour le français
             if (
-                    min_words <= word_count <= max_words
-                    and not sentence.startswith(("http", "www", "@"))
-                    and sentence.count(".") <= 2  # Pas trop de phrases complexes
-                    and not re.search(r"[A-Z]{3,}", sentence)  # Éviter les acronymes longs
-                    and self.is_proper_french_sentence(sentence)
+                min_words <= word_count <= max_words
+                and not sentence.startswith(("http", "www", "@"))
+                and sentence.count(".") <= 2  # Pas trop de phrases complexes
+                and not re.search(r"[A-Z]{3,}", sentence)  # Éviter les acronymes longs
+                and self.is_proper_french_sentence(sentence)
             ):
                 suitable_sentences.append(sentence)
 
@@ -254,12 +264,14 @@ class FrenchDatasetGenerator:
         has_verb_or_noun = any(token.pos_ in ["VERB", "NOUN"] for token in doc)
 
         # Pas trop de caractères spéciaux
-        special_char_ratio = len(re.findall(r'[^a-zA-ZÀ-ÿ\s\.,!?;:]', sentence)) / len(sentence)
+        special_char_ratio = len(re.findall(r"[^a-zA-ZÀ-ÿ\s\.,!?;:]", sentence)) / len(
+            sentence
+        )
 
         return has_verb_or_noun and special_char_ratio < 0.1
 
     def create_french_fill_in_blank_variants(
-            self, sentence: str, keywords: list[dict], level: str
+        self, sentence: str, keywords: list[dict], level: str
     ) -> list[dict]:
         """Crée des variantes françaises de texte à trous"""
         variants = []
@@ -275,11 +287,11 @@ class FrenchDatasetGenerator:
 
         for i, token in enumerate(doc):
             if (
-                    token.lemma_.lower() in keyword_words
-                    and not token.is_stop
-                    and not token.is_punct
-                    and len(token.text) > 3
-                    and token.pos_ in ["NOUN", "VERB", "ADJ"]  # Types de mots pertinents
+                token.lemma_.lower() in keyword_words
+                and not token.is_stop
+                and not token.is_punct
+                and len(token.text) > 3
+                and token.pos_ in ["NOUN", "VERB", "ADJ"]  # Types de mots pertinents
             ):
                 candidate_positions.append((i, token.text, token.lemma_.lower()))
 
@@ -334,7 +346,11 @@ class FrenchDatasetGenerator:
             # Identifier les groupes à ne pas séparer (déterminant + nom)
             protected_groups = []
             for i, token in enumerate(doc):
-                if token.pos_ == "DET" and i + 1 < len(doc) and doc[i + 1].pos_ == "NOUN":
+                if (
+                    token.pos_ == "DET"
+                    and i + 1 < len(doc)
+                    and doc[i + 1].pos_ == "NOUN"
+                ):
                     protected_groups.append((i, i + 1))
 
             # Mélanger en respectant ces groupes (version simplifiée)
@@ -349,7 +365,8 @@ class FrenchDatasetGenerator:
 
         # Préférer les définitions courtes et claires en français
         valid_definitions = [
-            d for d in definitions
+            d
+            for d in definitions
             if d.get("definition") and len(d["definition"].strip()) > 10
         ]
 
@@ -359,20 +376,21 @@ class FrenchDatasetGenerator:
         # Choisir la définition la plus courte et la plus claire
         best_def = min(
             valid_definitions,
-            key=lambda d: len(d.get("definition", "")) + (50 if "(" in d.get("definition", "") else 0)
+            key=lambda d: len(d.get("definition", ""))
+            + (50 if "(" in d.get("definition", "") else 0),
         )
 
         definition_text = best_def.get("definition", "Définition non disponible")
 
         # Nettoyer la définition
         definition_text = definition_text.strip()
-        if not definition_text.endswith('.'):
-            definition_text += '.'
+        if not definition_text.endswith("."):
+            definition_text += "."
 
         return definition_text
 
     def get_french_distractors(
-            self, target_words: list[str], keywords: list[dict], num_distractors: int
+        self, target_words: list[str], keywords: list[dict], num_distractors: int
     ) -> list[str]:
         """Génère des mots distracteurs français"""
         distractors = []
@@ -389,7 +407,9 @@ class FrenchDatasetGenerator:
         """Retourne un facteur de complexité selon le niveau"""
         return {"beginner": 0.3, "intermediate": 0.6, "advanced": 0.9}[level]
 
-    def is_french_sentence_appropriate_for_level(self, sentence: str, level: str) -> bool:
+    def is_french_sentence_appropriate_for_level(
+        self, sentence: str, level: str
+    ) -> bool:
         """Vérifie si une phrase française est appropriée pour un niveau"""
         word_count = len(sentence.split())
 
@@ -435,7 +455,9 @@ class FrenchDatasetGenerator:
 
     def generate_all_french_datasets(self):
         """Génère tous les datasets français pour les 3 modèles"""
-        logger.info("🚀 Génération des datasets d'entraînement français pour les modèles d'IA")
+        logger.info(
+            "🚀 Génération des datasets d'entraînement français pour les modèles d'IA"
+        )
 
         # Charger les données sources françaises
         source_data = self.load_french_source_data()
@@ -443,8 +465,12 @@ class FrenchDatasetGenerator:
         # Générer les datasets français pour chaque modèle
         datasets = {
             "fill_in_blank": self.generate_french_fill_in_blank_dataset(source_data),
-            "sentence_scrambler": self.generate_french_sentence_scrambler_dataset(source_data),
-            "definition_matcher": self.generate_french_definition_matcher_dataset(source_data),
+            "sentence_scrambler": self.generate_french_sentence_scrambler_dataset(
+                source_data
+            ),
+            "definition_matcher": self.generate_french_definition_matcher_dataset(
+                source_data
+            ),
         }
 
         # Sauvegarder avec splits train/val/test
@@ -452,7 +478,9 @@ class FrenchDatasetGenerator:
 
         # Statistiques finales
         total_examples = sum(len(dataset) for dataset in datasets.values())
-        logger.info(f"✅ {total_examples} exemples d'entraînement français générés au total")
+        logger.info(
+            f"✅ {total_examples} exemples d'entraînement français générés au total"
+        )
 
         for model_name, dataset in datasets.items():
             logger.info(f"   - {model_name}: {len(dataset)} exemples français")

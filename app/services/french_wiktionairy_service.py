@@ -2,8 +2,8 @@ import json
 import logging
 import os
 import random
-import time
 import re
+import time
 from urllib.parse import quote
 
 import requests
@@ -20,10 +20,12 @@ class FrenchWiktionaryFetcher:
         """
         self.delay_range = delay_range
         self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (compatible; FrenchLearningBot/1.0; Educational purposes)',
-            'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8'
-        })
+        self.session.headers.update(
+            {
+                "User-Agent": "Mozilla/5.0 (compatible; FrenchLearningBot/1.0; Educational purposes)",
+                "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+            }
+        )
 
         # URLs de base Wiktionnaire français
         self.wiktionary_api = "https://fr.wiktionary.org/api/rest_v1/page/definition/"
@@ -59,7 +61,9 @@ class FrenchWiktionaryFetcher:
                 logger.debug(f"🔍 Mot '{word}' non trouvé dans l'API Wiktionnaire")
                 return None
             else:
-                logger.warning(f"⚠️ Erreur API Wiktionnaire pour '{word}': {response.status_code}")
+                logger.warning(
+                    f"⚠️ Erreur API Wiktionnaire pour '{word}': {response.status_code}"
+                )
                 return None
 
         except Exception as e:
@@ -77,7 +81,7 @@ class FrenchWiktionaryFetcher:
             response = self.session.get(url, timeout=10)
 
             if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'html.parser')
+                soup = BeautifulSoup(response.text, "html.parser")
                 return self.parse_wiktionary_page(soup, word)
             else:
                 return None
@@ -92,35 +96,43 @@ class FrenchWiktionaryFetcher:
         examples = []
 
         # Structure de l'API Wiktionnaire française
-        if 'fr' in data:
-            french_data = data['fr']
+        if "fr" in data:
+            french_data = data["fr"]
 
             for definition_entry in french_data:
-                part_of_speech = definition_entry.get('partOfSpeech', '')
+                part_of_speech = definition_entry.get("partOfSpeech", "")
 
-                if 'definitions' in definition_entry:
-                    for def_item in definition_entry['definitions']:
-                        definition_text = def_item.get('definition', '')
+                if "definitions" in definition_entry:
+                    for def_item in definition_entry["definitions"]:
+                        definition_text = def_item.get("definition", "")
                         if definition_text:
                             # Nettoyer la définition
-                            clean_def = self.clean_french_definition_text(definition_text)
+                            clean_def = self.clean_french_definition_text(
+                                definition_text
+                            )
 
-                            definitions.append({
-                                'definition': clean_def,
-                                'part_of_speech': part_of_speech,
-                                'example': def_item.get('examples', [''])[0] if def_item.get('examples') else ''
-                            })
+                            definitions.append(
+                                {
+                                    "definition": clean_def,
+                                    "part_of_speech": part_of_speech,
+                                    "example": (
+                                        def_item.get("examples", [""])[0]
+                                        if def_item.get("examples")
+                                        else ""
+                                    ),
+                                }
+                            )
 
                             # Extraire les exemples
-                            if def_item.get('examples'):
-                                examples.extend(def_item['examples'][:2])
+                            if def_item.get("examples"):
+                                examples.extend(def_item["examples"][:2])
 
         return {
-            'word': word,
-            'definitions': definitions[:5],  # Max 5 définitions
-            'examples': examples[:3],  # Max 3 exemples
-            'source': 'wiktionary_api',
-            'language': 'french'
+            "word": word,
+            "definitions": definitions[:5],  # Max 5 définitions
+            "examples": examples[:3],  # Max 3 exemples
+            "source": "wiktionary_api",
+            "language": "french",
         }
 
     def parse_wiktionary_page(self, soup: BeautifulSoup, word: str) -> dict:
@@ -130,8 +142,8 @@ class FrenchWiktionaryFetcher:
 
         # Chercher la section française
         french_section = None
-        for h2 in soup.find_all('h2'):
-            span = h2.find('span', {'id': 'Français'})
+        for h2 in soup.find_all("h2"):
+            span = h2.find("span", {"id": "Français"})
             if span:
                 french_section = h2.parent
                 break
@@ -142,43 +154,49 @@ class FrenchWiktionaryFetcher:
 
         # Chercher les définitions dans les listes ordonnées
         definition_count = 0
-        for ol in french_section.find_all('ol'):
+        for ol in french_section.find_all("ol"):
             if definition_count >= 5:  # Limiter à 5 définitions
                 break
 
-            for li in ol.find_all('li'):
+            for li in ol.find_all("li"):
                 if definition_count >= 5:
                     break
 
                 def_text = li.get_text().strip()
-                if def_text and len(def_text) > 10 and not def_text.startswith('('):
+                if def_text and len(def_text) > 10 and not def_text.startswith("("):
                     clean_def = self.clean_french_definition_text(def_text)
                     if len(clean_def) > 5:  # Définition valide
-                        definitions.append({
-                            'definition': clean_def,
-                            'part_of_speech': self.extract_part_of_speech(li),
-                            'example': ''
-                        })
+                        definitions.append(
+                            {
+                                "definition": clean_def,
+                                "part_of_speech": self.extract_part_of_speech(li),
+                                "example": "",
+                            }
+                        )
                         definition_count += 1
 
         # Chercher des exemples dans les sections d'exemples
-        for em in french_section.find_all('em', limit=3):
+        for em in french_section.find_all("em", limit=3):
             example_text = em.get_text().strip()
-            if example_text and len(example_text) > 10 and word.lower() in example_text.lower():
+            if (
+                example_text
+                and len(example_text) > 10
+                and word.lower() in example_text.lower()
+            ):
                 examples.append(example_text)
 
         # Chercher aussi dans les sections avec class="example"
-        for example_elem in french_section.find_all(class_='example'):
+        for example_elem in french_section.find_all(class_="example"):
             example_text = example_elem.get_text().strip()
             if example_text and len(example_text) > 10:
                 examples.append(example_text)
 
         return {
-            'word': word,
-            'definitions': definitions,
-            'examples': examples[:3],
-            'source': 'wiktionary_scrape',
-            'language': 'french'
+            "word": word,
+            "definitions": definitions,
+            "examples": examples[:3],
+            "source": "wiktionary_scrape",
+            "language": "french",
         }
 
     def extract_part_of_speech(self, li_element) -> str:
@@ -187,44 +205,44 @@ class FrenchWiktionaryFetcher:
         text = li_element.get_text().lower()
 
         pos_patterns = {
-            'nom': r'\b(nom|n\.)\b',
-            'verbe': r'\b(verbe|v\.)\b',
-            'adjectif': r'\b(adjectif|adj\.)\b',
-            'adverbe': r'\b(adverbe|adv\.)\b',
-            'préposition': r'\b(préposition|prép\.)\b',
-            'conjonction': r'\b(conjonction|conj\.)\b',
-            'interjection': r'\b(interjection|interj\.)\b'
+            "nom": r"\b(nom|n\.)\b",
+            "verbe": r"\b(verbe|v\.)\b",
+            "adjectif": r"\b(adjectif|adj\.)\b",
+            "adverbe": r"\b(adverbe|adv\.)\b",
+            "préposition": r"\b(préposition|prép\.)\b",
+            "conjonction": r"\b(conjonction|conj\.)\b",
+            "interjection": r"\b(interjection|interj\.)\b",
         }
 
         for pos, pattern in pos_patterns.items():
             if re.search(pattern, text):
                 return pos
 
-        return ''
+        return ""
 
     def clean_french_definition_text(self, text: str) -> str:
         """Nettoie le texte d'une définition française"""
         # Supprimer les références et liens
-        text = re.sub(r'\[\d+\]', '', text)  # Références [1], [2], etc.
-        text = re.sub(r'\([^)]*\)', '', text)  # Texte entre parenthèses
-        text = re.sub(r'→ voir.*', '', text)  # Liens "voir aussi"
-        text = re.sub(r'Voir aussi.*', '', text)  # Liens "voir aussi"
+        text = re.sub(r"\[\d+\]", "", text)  # Références [1], [2], etc.
+        text = re.sub(r"\([^)]*\)", "", text)  # Texte entre parenthèses
+        text = re.sub(r"→ voir.*", "", text)  # Liens "voir aussi"
+        text = re.sub(r"Voir aussi.*", "", text)  # Liens "voir aussi"
 
         # Supprimer les balises wiki
-        text = re.sub(r'\{\{[^}]*\}\}', '', text)
-        text = re.sub(r'\[\[[^\]]*\]\]', '', text)
+        text = re.sub(r"\{\{[^}]*\}\}", "", text)
+        text = re.sub(r"\[\[[^\]]*\]\]", "", text)
 
         # Nettoyer les espaces
-        text = re.sub(r'\s+', ' ', text).strip()
+        text = re.sub(r"\s+", " ", text).strip()
 
         # Supprimer les préfixes courants français
-        prefixes = ['Définition:', 'Sens:', '•', '-', '*', '1.', '2.', '3.']
+        prefixes = ["Définition:", "Sens:", "•", "-", "*", "1.", "2.", "3."]
         for prefix in prefixes:
             if text.startswith(prefix):
-                text = text[len(prefix):].strip()
+                text = text[len(prefix) :].strip()
 
         # Supprimer les suffixes de référence
-        text = re.sub(r'\s*\([^)]*\)\s*$', '', text)
+        text = re.sub(r"\s*\([^)]*\)\s*$", "", text)
 
         return text.strip()
 
@@ -247,21 +265,33 @@ class FrenchWiktionaryFetcher:
         definition = self.fetch_definition_wiktionary_api(clean_word)
 
         # Fallback sur le scraping si l'API échoue ou donne peu de résultats
-        if not definition or not definition.get('definitions') or len(definition['definitions']) == 0:
+        if (
+            not definition
+            or not definition.get("definitions")
+            or len(definition["definitions"]) == 0
+        ):
             logger.debug(f"🔄 Fallback scraping pour '{word}'")
             definition = self.fetch_definition_wiktionary_scrape(clean_word)
 
-        if definition and definition.get('definitions') and len(definition['definitions']) > 0:
+        if (
+            definition
+            and definition.get("definitions")
+            and len(definition["definitions"]) > 0
+        ):
             self.stats["successful_requests"] += 1
             self.cache[clean_word] = definition
-            logger.debug(f"✅ Définition française trouvée pour '{word}' ({len(definition['definitions'])} définitions)")
+            logger.debug(
+                f"✅ Définition française trouvée pour '{word}' ({len(definition['definitions'])} définitions)"
+            )
             return definition
         else:
             self.stats["failed_requests"] += 1
             logger.debug(f"❌ Aucune définition française pour '{word}'")
             return None
 
-    def process_french_keywords_file(self, keywords_file: str, context: str) -> list[dict]:
+    def process_french_keywords_file(
+        self, keywords_file: str, context: str
+    ) -> list[dict]:
         """
         Traite un fichier de mots-clés français et enrichit avec Wiktionnaire
         """
@@ -274,7 +304,9 @@ class FrenchWiktionaryFetcher:
         with open(keywords_file, encoding="utf-8") as f:
             keywords = json.load(f)
 
-        logger.info(f"📝 {len(keywords)} mots-clés français à enrichir pour '{context}'")
+        logger.info(
+            f"📝 {len(keywords)} mots-clés français à enrichir pour '{context}'"
+        )
 
         enriched_keywords = []
 
@@ -293,39 +325,51 @@ class FrenchWiktionaryFetcher:
                     "importance_score": keyword.get("importance_score", 0),
                     "pos_tags": keyword.get("pos_tags", []),
                     "contexts_from_articles": keyword.get("contexts", []),
-                    "source_articles": [{
-                        "url": keyword.get("source_url", ""),
-                        "title": keyword.get("source_title", ""),
-                    }],
+                    "source_articles": [
+                        {
+                            "url": keyword.get("source_url", ""),
+                            "title": keyword.get("source_title", ""),
+                        }
+                    ],
                     "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "language": "french"
+                    "language": "french",
                 }
 
                 if definition_data:
-                    enriched_entry.update({
-                        "definitions": definition_data.get("definitions", []),
-                        "examples_from_dict": definition_data.get("examples", []),
-                        "dictionary_source": definition_data.get("source", ""),
-                        "has_definition": True,
-                        "definition_count": len(definition_data.get("definitions", []))
-                    })
+                    enriched_entry.update(
+                        {
+                            "definitions": definition_data.get("definitions", []),
+                            "examples_from_dict": definition_data.get("examples", []),
+                            "dictionary_source": definition_data.get("source", ""),
+                            "has_definition": True,
+                            "definition_count": len(
+                                definition_data.get("definitions", [])
+                            ),
+                        }
+                    )
                 else:
-                    enriched_entry.update({
-                        "definitions": [],
-                        "examples_from_dict": [],
-                        "dictionary_source": "",
-                        "has_definition": False,
-                        "definition_count": 0
-                    })
+                    enriched_entry.update(
+                        {
+                            "definitions": [],
+                            "examples_from_dict": [],
+                            "dictionary_source": "",
+                            "has_definition": False,
+                            "definition_count": 0,
+                        }
+                    )
 
                 enriched_keywords.append(enriched_entry)
 
                 # Log de progression
                 if (i + 1) % 10 == 0:
-                    success_rate = (self.stats["successful_requests"] /
-                                    max(self.stats["total_requests"], 1)) * 100
-                    logger.info(f"✅ {i + 1}/{len(keywords)} mots français traités "
-                                f"(succès: {success_rate:.1f}%)")
+                    success_rate = (
+                        self.stats["successful_requests"]
+                        / max(self.stats["total_requests"], 1)
+                    ) * 100
+                    logger.info(
+                        f"✅ {i + 1}/{len(keywords)} mots français traités "
+                        f"(succès: {success_rate:.1f}%)"
+                    )
 
             except Exception as e:
                 logger.error(f"❌ Erreur pour le mot français '{word}': {e}")
@@ -333,10 +377,16 @@ class FrenchWiktionaryFetcher:
 
         # Statistiques finales
         total_with_def = sum(1 for kw in enriched_keywords if kw["has_definition"])
-        success_rate = (total_with_def / len(enriched_keywords)) * 100 if enriched_keywords else 0
+        success_rate = (
+            (total_with_def / len(enriched_keywords)) * 100 if enriched_keywords else 0
+        )
 
-        logger.info(f"🎯 {len(enriched_keywords)} mots français traités pour '{context}'")
-        logger.info(f"📊 {total_with_def} mots avec définition Wiktionnaire ({success_rate:.1f}%)")
+        logger.info(
+            f"🎯 {len(enriched_keywords)} mots français traités pour '{context}'"
+        )
+        logger.info(
+            f"📊 {total_with_def} mots avec définition Wiktionnaire ({success_rate:.1f}%)"
+        )
 
         return enriched_keywords
 
@@ -347,7 +397,9 @@ class FrenchWiktionaryFetcher:
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(definitions, f, ensure_ascii=False, indent=2)
 
-        logger.info(f"💾 {len(definitions)} définitions françaises sauvegardées dans {output_file}")
+        logger.info(
+            f"💾 {len(definitions)} définitions françaises sauvegardées dans {output_file}"
+        )
 
     def print_french_stats(self):
         """Affiche les statistiques détaillées Wiktionnaire français"""
@@ -360,8 +412,9 @@ class FrenchWiktionaryFetcher:
         logger.info(f"   Requêtes scraping: {self.stats['scrape_requests']}")
 
         if self.stats["total_requests"] > 0:
-            success_rate = (self.stats["successful_requests"] /
-                            self.stats["total_requests"]) * 100
+            success_rate = (
+                self.stats["successful_requests"] / self.stats["total_requests"]
+            ) * 100
             logger.info(f"   Taux de succès global: {success_rate:.1f}%")
 
 
@@ -389,9 +442,13 @@ def main():
                 output_file = f"{definitions_dir}/{context}_definitions_fr.json"
                 fetcher.save_french_definitions(definitions, output_file)
             else:
-                logger.warning(f"⚠️ Aucune définition française récupérée pour '{context}'")
+                logger.warning(
+                    f"⚠️ Aucune définition française récupérée pour '{context}'"
+                )
         else:
-            logger.warning(f"⚠️ Fichier de mots-clés français non trouvé: {keywords_file}")
+            logger.warning(
+                f"⚠️ Fichier de mots-clés français non trouvé: {keywords_file}"
+            )
 
     # Afficher les statistiques
     fetcher.print_french_stats()

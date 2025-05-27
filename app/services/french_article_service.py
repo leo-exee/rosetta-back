@@ -88,8 +88,8 @@ class FrenchArticleScraper:
             'a[href*="/news"]',
             'a[href*="/actu"]',
             'a[href*="/recette"]',  # Pour les sites de cuisine
-            'a[href*="/voyage"]',   # Pour les sites de voyage
-            'a[href*="/tech"]',     # Pour les sites tech
+            'a[href*="/voyage"]',  # Pour les sites de voyage
+            'a[href*="/tech"]',  # Pour les sites tech
             "article a",
             ".article-title a",
             ".entry-title a",
@@ -130,13 +130,39 @@ class FrenchArticleScraper:
 
         # URLs à éviter
         avoid_patterns = [
-            "/tag/", "/tags/", "/category/", "/categorie/", "/author/", "/auteur/",
-            "/page/", "/recherche/", "/search/", "/login", "/connexion",
-            "/register", "/inscription", "/contact", "/a-propos", "/about",
-            "/mentions-legales", "/cgu", "/privacy", "/confidentialite",
-            ".pdf", ".jpg", ".png", ".gif", ".mp4", ".zip",
-            "#", "javascript:", "mailto:", "tel:",
-            "/newsletter", "/rss", "/feed"
+            "/tag/",
+            "/tags/",
+            "/category/",
+            "/categorie/",
+            "/author/",
+            "/auteur/",
+            "/page/",
+            "/recherche/",
+            "/search/",
+            "/login",
+            "/connexion",
+            "/register",
+            "/inscription",
+            "/contact",
+            "/a-propos",
+            "/about",
+            "/mentions-legales",
+            "/cgu",
+            "/privacy",
+            "/confidentialite",
+            ".pdf",
+            ".jpg",
+            ".png",
+            ".gif",
+            ".mp4",
+            ".zip",
+            "#",
+            "javascript:",
+            "mailto:",
+            "tel:",
+            "/newsletter",
+            "/rss",
+            "/feed",
         ]
 
         if any(pattern in url_lower for pattern in avoid_patterns):
@@ -144,17 +170,34 @@ class FrenchArticleScraper:
 
         # URLs probablement intéressantes (mots-clés français)
         good_patterns = [
-            "/article", "/actualite", "/actu", "/news", "/info",
-            "/recette", "/cuisine", "/voyage", "/destination",
-            "/tech", "/numerique", "/digital", "/innovation",
-            "/business", "/economie", "/entreprise", "/management",
-            "/2024/", "/2025/",
-            "/comment-", "/pourquoi-", "/que-", "/qui-",
+            "/article",
+            "/actualite",
+            "/actu",
+            "/news",
+            "/info",
+            "/recette",
+            "/cuisine",
+            "/voyage",
+            "/destination",
+            "/tech",
+            "/numerique",
+            "/digital",
+            "/innovation",
+            "/business",
+            "/economie",
+            "/entreprise",
+            "/management",
+            "/2024/",
+            "/2025/",
+            "/comment-",
+            "/pourquoi-",
+            "/que-",
+            "/qui-",
         ]
 
         return (
-                any(pattern in url_lower for pattern in good_patterns)
-                or len(url.split("/")) >= 4
+            any(pattern in url_lower for pattern in good_patterns)
+            or len(url.split("/")) >= 4
         )
 
     def extract_article_content(self, soup: BeautifulSoup) -> dict[str, str]:
@@ -181,12 +224,28 @@ class FrenchArticleScraper:
         content = ""
 
         # Supprimer les éléments indésirables
-        for element in soup([
-            "script", "style", "nav", "header", "footer", "aside",
-            "advertisement", ".pub", ".publicite", ".ad", ".ads",
-            ".newsletter", ".social", ".partage", ".share",
-            ".comments", ".commentaires", ".comment-form"
-        ]):
+        for element in soup(
+            [
+                "script",
+                "style",
+                "nav",
+                "header",
+                "footer",
+                "aside",
+                "advertisement",
+                ".pub",
+                ".publicite",
+                ".ad",
+                ".ads",
+                ".newsletter",
+                ".social",
+                ".partage",
+                ".share",
+                ".comments",
+                ".commentaires",
+                ".comment-form",
+            ]
+        ):
             element.decompose()
 
         # Chercher le contenu principal (sélecteurs français)
@@ -282,7 +341,9 @@ class FrenchArticleScraper:
                 logger.error(f"❌ Erreur lors du traitement de {link}: {e}")
                 continue
 
-        logger.info(f"🎯 {len(articles)} articles français valides récupérés de {source_url}")
+        logger.info(
+            f"🎯 {len(articles)} articles français valides récupérés de {source_url}"
+        )
         return articles
 
     def is_likely_french_text(self, text: str) -> bool:
@@ -292,16 +353,55 @@ class FrenchArticleScraper:
 
         # Mots français courants
         french_words = [
-            "le", "de", "et", "à", "un", "il", "être", "et", "en", "avoir",
-            "que", "pour", "dans", "ce", "son", "une", "sur", "avec", "ne",
-            "se", "pas", "tout", "plus", "par", "grand", "comme", "mais",
-            "dans", "cette", "des", "les", "du", "la", "leur", "ses",
-            "français", "france", "aussi", "très", "nous", "vous", "ils"
+            "le",
+            "de",
+            "et",
+            "à",
+            "un",
+            "il",
+            "être",
+            "et",
+            "en",
+            "avoir",
+            "que",
+            "pour",
+            "dans",
+            "ce",
+            "son",
+            "une",
+            "sur",
+            "avec",
+            "ne",
+            "se",
+            "pas",
+            "tout",
+            "plus",
+            "par",
+            "grand",
+            "comme",
+            "mais",
+            "dans",
+            "cette",
+            "des",
+            "les",
+            "du",
+            "la",
+            "leur",
+            "ses",
+            "français",
+            "france",
+            "aussi",
+            "très",
+            "nous",
+            "vous",
+            "ils",
         ]
 
         # Compter les mots français
         words = text.lower().split()
-        french_count = sum(1 for word in words[:100] if any(fw in word for fw in french_words))
+        french_count = sum(
+            1 for word in words[:100] if any(fw in word for fw in french_words)
+        )
 
         # Au moins 20% de mots français parmi les 100 premiers
         return french_count >= 20
@@ -325,7 +425,9 @@ class FrenchArticleScraper:
             for article in all_articles:
                 f.write(json.dumps(article, ensure_ascii=False) + "\n")
 
-        logger.info(f"💾 {len(all_articles)} articles français sauvegardés dans {output_file}")
+        logger.info(
+            f"💾 {len(all_articles)} articles français sauvegardés dans {output_file}"
+        )
         logger.info(
             f"✨ Scraping français terminé pour '{context}': {len(all_articles)} articles au total"
         )
@@ -344,7 +446,9 @@ def main():
             logger.info("🛑 Arrêt demandé par l'utilisateur")
             break
         except Exception as e:
-            logger.error(f"❌ Erreur lors du scraping du contexte français '{context}': {e}")
+            logger.error(
+                f"❌ Erreur lors du scraping du contexte français '{context}': {e}"
+            )
             continue
 
     logger.info("🎉 Scraping français terminé pour tous les contextes")
