@@ -159,77 +159,6 @@ class FrenchDatasetGenerator:
         )
         return dataset
 
-    def generate_french_definition_matcher_dataset(self, data: dict) -> list[dict]:
-        """
-        Génère le dataset français pour le modèle Definition Matcher
-        Format: {"input": "context|level", "output": "word1,word2,word3|||def1|||def2|||def3|||1,2,3"}
-        """
-        dataset = []
-
-        for context in self.contexts:
-            definitions = data["definitions"].get(context, [])
-            words_by_level = defaultdict(list)
-
-            # Organiser par niveau (mots français avec définitions)
-            for word_data in definitions:
-                if word_data.get("has_definition") and word_data.get("definitions"):
-                    words_by_level[word_data["level"]].append(word_data)
-
-            for level in self.levels:
-                available_words = words_by_level[level]
-                if len(available_words) < 3:
-                    continue
-
-                # Créer des groupes de 3 mots français
-                num_groups = min(
-                    50, len(available_words) // 3
-                )  # Max 50 groupes par niveau
-
-                for _ in range(num_groups):
-                    # Sélectionner 3 mots français aléatoirement
-                    selected_words = random.sample(available_words, 3)
-
-                    words = []
-                    definitions = []
-
-                    for word_data in selected_words:
-                        words.append(word_data["word"])
-                        # Prendre la meilleure définition française disponible
-                        best_def = self.get_best_french_definition(
-                            word_data["definitions"]
-                        )
-                        definitions.append(best_def)
-
-                    # Mélanger les définitions pour créer l'exercice
-                    shuffled_definitions = definitions.copy()
-                    random.shuffle(shuffled_definitions)
-
-                    # Trouver les bonnes correspondances
-                    correct_matches = []
-                    for orig_def in definitions:
-                        correct_matches.append(
-                            str(shuffled_definitions.index(orig_def) + 1)
-                        )
-
-                    dataset.append(
-                        {
-                            "input": f"{context}|{level}",
-                            "output": f"{','.join(words)}|||{'|||'.join(shuffled_definitions)}|||{','.join(correct_matches)}",
-                            "metadata": {
-                                "context": context,
-                                "level": level,
-                                "words": words,
-                                "original_definitions": definitions,
-                                "language": "french",
-                            },
-                        }
-                    )
-
-        logger.info(
-            f"🎯 {len(dataset)} exemples français générés pour Definition Matcher"
-        )
-        return dataset
-
     def extract_french_suitable_sentences(
         self, text: str, min_words: int = 8, max_words: int = 30
     ) -> list[str]:
@@ -358,36 +287,211 @@ class FrenchDatasetGenerator:
 
         return " ".join(words)
 
+    def generate_french_definition_matcher_dataset(self, data: dict) -> list[dict]:
+        """
+        Génère le dataset français pour le modèle Definition Matcher
+        Format: {"input": "context|level", "output": "word1,word2,word3|||def1|||def2|||def3|||1,2,3"}
+        """
+        dataset = []
+
+        for context in self.contexts:
+            definitions = data["definitions"].get(context, [])
+            words_by_level = defaultdict(list)
+
+            # Organiser par niveau et filtrer les mots avec définitions valides
+            for word_data in definitions:
+                if (
+                    word_data.get("has_definition")
+                    and word_data.get("definitions")
+                    and len(word_data.get("definitions", [])) > 0
+                ):
+
+                    # Vérifier qu'on peut extraire une définition valide
+                    test_def = self.get_best_french_definition(word_data["definitions"])
+                    if (
+                        test_def
+                        and test_def != "Aucune définition disponible"
+                        and test_def != "Aucune définition valide disponible"
+                    ):
+                        words_by_level[word_data["level"]].append(word_data)
+
+            for level in self.levels:
+                available_words = words_by_level[level]
+                if len(available_words) < 3:
+                    logger.warning(
+                        f"⚠️ Pas assez de mots avec définitions pour {context}/{level}: {len(available_words)} mots"
+                    )
+                    continue
+
+                # Créer des groupes de 3 mots
+                num_groups = min(50, len(available_words) // 3)
+
+                for _ in range(num_groups):
+                    try:
+                        # Sélectionner 3 mots différents aléatoirement
+                        selected_words = random.sample(available_words, 3)
+
+                        words = []
+                        definitions = []
+                        valid_group = True
+
+                        for word_data in selected_words:
+                            word = word_data["word"]
+                            best_def = self.get_best_french_definition(
+                                word_data["definitions"]
+                            )
+
+                            # Vérifier que la définition est valide
+                            if (
+                                not best_def
+                                or best_def
+                                in [
+                                    "Aucune définition disponible",
+                                    "Aucune définition valide disponible",
+                                ]
+                                or len(best_def.strip()) < 10
+                            ):
+                                valid_group = False
+                                break
+
+                            words.append(word)
+                            definitions.append(best_def.strip())
+
+                        if (
+                            not valid_group or len(set(definitions)) != 3
+                        ):  # Éviter les définitions dupliquées
+                            continue
+
+                        # Mélanger les définitions pour créer l'exercice
+                        shuffled_definitions = definitions.copy()
+                        random.shuffle(shuffled_definitions)
+
+                        # Trouver les bonnes correspondances
+                        correct_matches = []
+                        for orig_def in definitions:
+                            try:
+                                match_index = shuffled_definitions.index(orig_def) + 1
+                                correct_matches.append(str(match_index))
+                            except ValueError:
+                                # Si on ne trouve pas la définition (ne devrait pas arriver)
+                                logger.error(
+                                    f"Impossible de trouver la correspondance pour: {orig_def[:50]}..."
+                                )
+                                valid_group = False
+                                break
+
+                        if not valid_group:
+                            continue
+
+                        dataset.append(
+                            {
+                                "input": f"{context}|{level}",
+                                "output": f"{','.join(words)}|||{'|||'.join(shuffled_definitions)}|||{','.join(correct_matches)}",
+                                "metadata": {
+                                    "context": context,
+                                    "level": level,
+                                    "words": words,
+                                    "original_definitions": definitions,
+                                    "language": "french",
+                                },
+                            }
+                        )
+
+                    except Exception as e:
+                        logger.error(
+                            f"Erreur lors de la création d'un groupe de définitions: {e}"
+                        )
+                        continue
+
+        logger.info(
+            f"🎯 {len(dataset)} exemples français générés pour Definition Matcher"
+        )
+        return dataset
+
     def get_best_french_definition(self, definitions: list[dict]) -> str:
         """Sélectionne la meilleure définition française"""
         if not definitions:
-            return "Définition non disponible"
+            return "Aucune définition disponible"
 
-        # Préférer les définitions courtes et claires en français
-        valid_definitions = [
-            d
-            for d in definitions
-            if d.get("definition") and len(d["definition"].strip()) > 10
-        ]
+        # Filtrer les définitions valides et les trier par qualité
+        valid_definitions = []
+
+        for d in definitions:
+            definition_text = d.get("definition", "")
+
+            # Gérer le cas où definition pourrait être une liste
+            if isinstance(definition_text, list):
+                # Si c'est une liste, prendre le premier élément non vide
+                for item in definition_text:
+                    if isinstance(item, str) and item.strip():
+                        definition_text = item.strip()
+                        break
+                else:
+                    continue  # Passer à la définition suivante si aucun élément valide
+            elif isinstance(definition_text, str):
+                definition_text = definition_text.strip()
+            else:
+                continue  # Ignorer si ce n'est ni une chaîne ni une liste
+
+            # Vérifier que la définition est suffisamment longue et informative
+            if (
+                definition_text
+                and len(definition_text) > 10
+                and not definition_text.lower().startswith(
+                    ("voir", "cf.", "cf ", "même que")
+                )
+            ):
+
+                # Gérer le cas où example peut être un dict ou une string
+                has_example = False
+                example_data = d.get("example")
+                if example_data:
+                    if isinstance(example_data, dict):
+                        has_example = bool(example_data.get("content"))
+                    elif isinstance(example_data, str):
+                        has_example = bool(example_data.strip())
+
+                valid_definitions.append(
+                    {
+                        "text": definition_text,
+                        "length": len(definition_text),
+                        "part_of_speech": d.get("part_of_speech", ""),
+                        "has_example": has_example,
+                    }
+                )
 
         if not valid_definitions:
-            return "Définition non disponible"
+            return "Aucune définition valide disponible"
 
-        # Choisir la définition la plus courte et la plus claire
-        best_def = min(
-            valid_definitions,
-            key=lambda d: len(d.get("definition", ""))
-            + (50 if "(" in d.get("definition", "") else 0),
-        )
+        # Trier par qualité : préférer les définitions
+        # 1. Avec des exemples
+        # 2. De longueur moyenne (ni trop courtes ni trop longues)
+        # 3. Qui sont des noms communs
+        def definition_quality_score(def_dict):
+            score = 0
 
-        definition_text = best_def.get("definition", "Définition non disponible")
+            # Bonus si c'est un nom commun
+            if "nom" in def_dict["part_of_speech"].lower():
+                score += 3
 
-        # Nettoyer la définition
-        definition_text = definition_text.strip()
-        if not definition_text.endswith("."):
-            definition_text += "."
+            # Bonus si il y a un exemple
+            if def_dict["has_example"]:
+                score += 2
 
-        return definition_text
+            # Pénalité pour les définitions trop courtes ou trop longues
+            length = def_dict["length"]
+            if 20 <= length <= 100:  # Longueur idéale
+                score += 2
+            elif length < 15:  # Trop court
+                score -= 1
+            elif length > 150:  # Trop long
+                score -= 1
+
+            return score
+
+        # Prendre la définition avec le meilleur score
+        best_definition = max(valid_definitions, key=definition_quality_score)
+        return best_definition["text"]
 
     def get_french_distractors(
         self, target_words: list[str], keywords: list[dict], num_distractors: int
