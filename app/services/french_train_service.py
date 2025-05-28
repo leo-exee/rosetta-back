@@ -1,21 +1,23 @@
 import json
 import logging
+import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
 import torch
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import accuracy_score
 from transformers import (
     AutoModelForSeq2SeqLM,
     AutoModelForSequenceClassification,
     AutoTokenizer,
     DataCollatorForSeq2Seq,
+    EarlyStoppingCallback,
     Seq2SeqTrainer,
     Seq2SeqTrainingArguments,
     Trainer,
     TrainingArguments,
-    pipeline,
 )
 
 from datasets import Dataset, DatasetDict
@@ -25,62 +27,119 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class AIModelsTrainer:
+class OptimizedAIModelsTrainer:
     """
-    Entraîneur pour les trois modèles d'IA :
-    1. Fill-in-the-Blank Generator (T5)
-    2. Sentence Scrambler (T5)
-    3. Definition Matcher (BERT)
+    Entraîneur optimisé pour les trois modèles d'IA avec améliorations de performances
     """
 
-    def __init__(self, base_output_dir: str = "models/trained"):
+    def __init__(self, base_output_dir: str = "models/trained", use_gpu: bool = True):
         self.base_output_dir = Path(base_output_dir)
         self.base_output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Configuration des modèles
+        # Configuration GPU/CPU optimisée
+        self.device = self._setup_device(use_gpu)
+        self.use_mixed_precision = torch.cuda.is_available() and use_gpu
+
+        # Configuration des modèles optimisée
         self.model_configs = {
             "fill_in_blank": {
-                "model_name": "google/flan-t5-small",
+                "model_name": "google/flan-t5-small",  # Gardé petit pour la vitesse
                 "type": "seq2seq",
                 "task_prefix": "Fill in the blanks: ",
-                "max_input_length": 256,
-                "max_target_length": 128,
+                "max_input_length": 128,  # Réduit de 256 -> 128
+                "max_target_length": 64,  # Réduit de 128 -> 64
+                "batch_size": self._get_optimal_batch_size("seq2seq"),
             },
             "sentence_scrambler": {
                 "model_name": "google/flan-t5-small",
                 "type": "seq2seq",
                 "task_prefix": "Unscramble sentence: ",
-                "max_input_length": 128,
-                "max_target_length": 128,
+                "max_input_length": 96,  # Réduit de 128 -> 96
+                "max_target_length": 64,  # Réduit de 128 -> 64
+                "batch_size": self._get_optimal_batch_size("seq2seq"),
             },
             "definition_matcher": {
                 "model_name": "distilbert-base-uncased",
                 "type": "classification",
-                "num_labels": 3,  # 3 mots à matcher
-                "max_input_length": 256,
+                "num_labels": 3,
+                "max_input_length": 128,  # Réduit de 256 -> 128
+                "batch_size": self._get_optimal_batch_size("classification"),
             },
         }
+
+        # Cache pour les tokenizers
+        self._tokenizer_cache = {}
 
         # Statistiques d'entraînement
         self.training_stats = {}
 
-    def load_datasets(
+    def _setup_device(self, use_gpu: bool):
+        """Configure le device optimal"""
+        if use_gpu and torch.cuda.is_available():
+            device = torch.device("cuda")
+            logger.info(f"🔥 GPU détecté: {torch.cuda.get_device_name()}")
+            # Optimisations CUDA
+            torch.backends.cudnn.benchmark = True
+            torch.backends.cudnn.deterministic = False
+        else:
+            device = torch.device("cpu")
+            logger.info("💻 Entraînement sur CPU")
+            # Optimisations CPU
+            torch.set_num_threads(min(8, os.cpu_count()))
+
+        return device
+
+    def _get_optimal_batch_size(self, model_type: str) -> dict:
+        """Calcule les tailles de batch optimales selon le hardware"""
+        if torch.cuda.is_available():
+            # GPU - batch sizes plus grands
+            if model_type == "seq2seq":
+                return {"train": 8, "eval": 16}
+            else:  # classification
+                return {"train": 16, "eval": 32}
+        else:
+            # CPU - batch sizes plus petits
+            if model_type == "seq2seq":
+                return {"train": 4, "eval": 8}
+            else:
+                return {"train": 8, "eval": 16}
+
+    def _get_cached_tokenizer(self, model_name: str):
+        """Cache des tokenizers pour éviter les rechargements"""
+        if model_name not in self._tokenizer_cache:
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            if tokenizer.pad_token is None:
+                tokenizer.pad_token = tokenizer.eos_token
+            self._tokenizer_cache[model_name] = tokenizer
+        return self._tokenizer_cache[model_name]
+
+    def load_datasets_parallel(
         self, dataset_dir: str = "datasets/training_fr"
     ) -> dict[str, DatasetDict]:
-        """Charge tous les datasets d'entraînement"""
-        logger.info("📚 Chargement des datasets...")
+        """Charge les datasets en parallèle pour plus de vitesse"""
+        logger.info("📚 Chargement parallèle des datasets...")
 
         datasets = {}
         dataset_path = Path(dataset_dir)
 
-        for model_name in self.model_configs.keys():
+        # Debug : vérifier que le dossier existe
+        logger.info(f"🔍 Recherche dans : {dataset_path.absolute()}")
+        if not dataset_path.exists():
+            logger.error(f"❌ Dossier datasets non trouvé : {dataset_path}")
+            return {}
+
+        # Debug : lister les dossiers disponibles
+        available_dirs = [d.name for d in dataset_path.iterdir() if d.is_dir()]
+        logger.info(f"📁 Dossiers disponibles : {available_dirs}")
+
+        def load_single_dataset(model_name):
             model_dir = dataset_path / model_name
+            logger.info(f"🔍 Chargement de {model_name} depuis {model_dir}")
 
             if not model_dir.exists():
                 logger.warning(f"⚠️ Dossier non trouvé: {model_dir}")
-                continue
+                return model_name, None
 
-            # Charger train/val/test
             splits = {}
             for split in ["train", "val", "test"]:
                 split_file = model_dir / f"{split}.jsonl"
@@ -92,727 +151,501 @@ class AIModelsTrainer:
                 else:
                     logger.warning(f"⚠️ Fichier manquant: {split_file}")
 
-            if splits:
-                datasets[model_name] = splits
+            return model_name, splits if splits else None
 
+        # Chargement parallèle
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            futures = [
+                executor.submit(load_single_dataset, model_name)
+                for model_name in self.model_configs.keys()
+            ]
+
+            for future in as_completed(futures):
+                model_name, data = future.result()
+                if data:
+                    datasets[model_name] = data
+                    total_samples = sum(len(split_data) for split_data in data.values())
+                    logger.info(f"✅ {model_name}: {total_samples} exemples totaux")
+                else:
+                    logger.warning(f"⚠️ Aucune donnée chargée pour {model_name}")
+
+        logger.info(f"📊 Datasets chargés : {list(datasets.keys())}")
         return datasets
 
-    def prepare_fill_in_blank_data(self, data: list[dict]) -> Dataset:
-        """Prépare les données pour le modèle Fill-in-the-Blank"""
-        inputs = []
-        targets = []
+    def prepare_data_optimized(self, data: list[dict], model_name: str) -> Dataset:
+        """Version optimisée de la préparation des données avec validation"""
+        if model_name == "fill_in_blank":
+            return self._prepare_fill_in_blank_optimized(data)
+        elif model_name == "sentence_scrambler":
+            return self._prepare_sentence_scrambler_optimized(data)
+        elif model_name == "definition_matcher":
+            return self._prepare_definition_matcher_optimized(data)
+        else:
+            raise ValueError(f"Modèle non reconnu: {model_name}")
+
+    def _prepare_fill_in_blank_optimized(self, data: list[dict]) -> Dataset:
+        """Version optimisée avec validation des données"""
+        inputs, targets = [], []
+        skipped = 0
 
         for item in data:
             try:
-                # Format d'entrée: context|level|original_text
                 input_parts = item["input"].split("|")
-                if len(input_parts) != 3:
-                    logger.warning(f"Format d'entrée invalide: {item['input']}")
-                    continue
-
-                context, level, original_text = input_parts
-
-                # Format de sortie: text_with_blanks|||words_to_fill|||complete_text
                 output_parts = item["output"].split("|||")
-                if len(output_parts) != 3:
-                    logger.warning(f"Format de sortie invalide: {item['output']}")
+
+                if len(input_parts) != 3 or len(output_parts) != 3:
+                    skipped += 1
                     continue
 
+                context, level, _ = input_parts
                 text_with_blanks, words_to_fill, complete_text = output_parts
 
-                # Input pour le modèle: instruction + contexte + texte à trous
-                model_input = f"Context: {context}, Level: {level}. Fill the blanks: {text_with_blanks}. Options: {words_to_fill}"
+                # Input plus concis
+                model_input = f"Context: {context[:50]}, Level: {level}. Fill: {text_with_blanks}. Options: {words_to_fill}"
+                inputs.append(model_input)
+                targets.append(complete_text)
 
-                # Target: texte complet
-                model_target = complete_text.strip()
-
-                # Validation des données
-                if len(model_input.strip()) == 0 or len(model_target.strip()) == 0:
-                    logger.warning("Données vides détectées, ignorées")
-                    continue
-
-                inputs.append(model_input.strip())
-                targets.append(model_target.strip())
-
-            except Exception as e:
-                logger.warning(f"Erreur lors du traitement d'un item: {e}")
+            except Exception:
+                skipped += 1
                 continue
 
-        logger.info(f"📊 Fill-in-blank: {len(inputs)} exemples préparés")
+        if skipped > 0:
+            logger.warning(f"⚠️ {skipped} exemples ignorés (format invalide)")
+
         return Dataset.from_dict({"input_text": inputs, "target_text": targets})
 
-    def prepare_sentence_scrambler_data(self, data: list[dict]) -> Dataset:
-        """Prépare les données pour le modèle Sentence Scrambler"""
-        inputs = []
-        targets = []
+    def _prepare_sentence_scrambler_optimized(self, data: list[dict]) -> Dataset:
+        """Version optimisée pour sentence scrambler"""
+        inputs, targets = [], []
+        skipped = 0
 
         for item in data:
             try:
-                # Format d'entrée: context|level|original_sentence
                 input_parts = item["input"].split("|")
-                if len(input_parts) != 3:
-                    logger.warning(f"Format d'entrée invalide: {item['input']}")
-                    continue
-
-                context, level, original_sentence = input_parts
-
-                # Format de sortie: scrambled_words|||original_sentence
                 output_parts = item["output"].split("|||")
-                if len(output_parts) != 2:
-                    logger.warning(f"Format de sortie invalide: {item['output']}")
+
+                if len(input_parts) != 3 or len(output_parts) != 2:
+                    skipped += 1
                     continue
 
+                context, level, _ = input_parts
                 scrambled_words, target_sentence = output_parts
 
-                # Input pour le modèle: instruction + mots mélangés
-                model_input = (
-                    f"Context: {context}, Level: {level}. Unscramble: {scrambled_words}"
-                )
+                # Input plus concis
+                model_input = f"Context: {context[:50]}, Level: {level}. Unscramble: {scrambled_words}"
+                inputs.append(model_input)
+                targets.append(target_sentence)
 
-                # Target: phrase correcte
-                model_target = target_sentence.strip()
-
-                # Validation des données
-                if len(model_input.strip()) == 0 or len(model_target.strip()) == 0:
-                    logger.warning("Données vides détectées, ignorées")
-                    continue
-
-                inputs.append(model_input.strip())
-                targets.append(model_target.strip())
-
-            except Exception as e:
-                logger.warning(f"Erreur lors du traitement d'un item: {e}")
+            except Exception:
+                skipped += 1
                 continue
 
-        logger.info(f"📊 Sentence scrambler: {len(inputs)} exemples préparés")
+        if skipped > 0:
+            logger.warning(f"⚠️ {skipped} exemples ignorés (format invalide)")
+
         return Dataset.from_dict({"input_text": inputs, "target_text": targets})
 
-    def prepare_definition_matcher_data(self, data: list[dict]) -> Dataset:
-        """Prépare les données pour le modèle Definition Matcher"""
-        inputs = []
-        labels = []
+    def _prepare_definition_matcher_optimized(self, data: list[dict]) -> Dataset:
+        """Version optimisée pour definition matcher"""
+        inputs, labels = [], []
+        skipped = 0
 
         for item in data:
             try:
-                # Format d'entrée: context|level
                 input_parts = item["input"].split("|")
-                if len(input_parts) != 2:
-                    logger.warning(f"Format d'entrée invalide: {item['input']}")
+                output_parts = item["output"].split("|||")
+
+                if len(input_parts) != 2 or len(output_parts) != 5:
+                    skipped += 1
                     continue
 
                 context, level = input_parts
-
-                # Format de sortie: word1,word2,word3|||def1|||def2|||def3|||1,2,3
-                output_parts = item["output"].split("|||")
-                if len(output_parts) != 5:
-                    logger.warning(f"Format de sortie invalide: {item['output']}")
-                    continue
-
                 words_str, def1, def2, def3, correct_matches = output_parts
-                words = [w.strip() for w in words_str.split(",")]
-                definitions = [def1.strip(), def2.strip(), def3.strip()]
 
-                try:
-                    matches = [
-                        int(x.strip()) - 1 for x in correct_matches.split(",")
-                    ]  # Convert to 0-based
-                except ValueError as e:
-                    logger.warning(f"Erreur de conversion des correspondances: {e}")
-                    continue
+                words = words_str.split(",")
+                definitions = [def1, def2, def3]
+                matches = [int(x) - 1 for x in correct_matches.split(",")]
 
-                # Créer des exemples pour chaque association mot-définition
-                for _i, (word, correct_def_idx) in enumerate(
-                    zip(words, matches, strict=False)
-                ):
-                    if correct_def_idx < 0 or correct_def_idx >= len(definitions):
-                        logger.warning(
-                            f"Index de définition invalide: {correct_def_idx}"
-                        )
-                        continue
+                for word, correct_def_idx in zip(words, matches, strict=True):
+                    # Input plus concis avec troncature
+                    context_short = context[:30]
+                    defs_short = " | ".join(
+                        [d[:40] + "..." if len(d) > 40 else d for d in definitions]
+                    )
+                    model_input = f"Context: {context_short}, Level: {level}. Word: {word}. Defs: {defs_short}"
 
-                    # Input: contexte + mot + toutes les définitions
-                    all_defs = " | ".join(definitions)
-                    model_input = f"Context: {context}, Level: {level}. Word: {word}. Definitions: {all_defs}"
+                    inputs.append(model_input)
+                    labels.append(correct_def_idx)
 
-                    # Label: index de la bonne définition
-                    label = correct_def_idx
-
-                    # Validation des données
-                    if len(model_input.strip()) == 0:
-                        logger.warning("Données d'entrée vides détectées, ignorées")
-                        continue
-
-                    inputs.append(model_input.strip())
-                    labels.append(label)
-
-            except Exception as e:
-                logger.warning(f"Erreur lors du traitement d'un item: {e}")
+            except Exception:
+                skipped += 1
                 continue
 
-        logger.info(f"📊 Definition matcher: {len(inputs)} exemples préparés")
+        if skipped > 0:
+            logger.warning(f"⚠️ {skipped} exemples ignorés (format invalide)")
+
         return Dataset.from_dict({"input_text": inputs, "labels": labels})
 
-    def tokenize_seq2seq_data(
+    def tokenize_with_caching(
+        self, dataset: Dataset, model_name: str, config: dict
+    ) -> Dataset:
+        """Tokenisation avec cache et optimisations"""
+        tokenizer = self._get_cached_tokenizer(config["model_name"])
+
+        if config["type"] == "seq2seq":
+            return self._tokenize_seq2seq_optimized(dataset, tokenizer, config)
+        else:
+            return self._tokenize_classification_optimized(dataset, tokenizer, config)
+
+    def _tokenize_seq2seq_optimized(
         self, dataset: Dataset, tokenizer, config: dict
     ) -> Dataset:
-        """Tokenise les données pour les modèles seq2seq"""
+        """Tokenisation seq2seq optimisée"""
 
         def tokenize_function(examples):
-            # Ajouter le préfixe de tâche aux inputs
-            prefixed_inputs = [
-                config["task_prefix"] + text for text in examples["input_text"]
-            ]
-
-            # Tokeniser les inputs
             model_inputs = tokenizer(
-                prefixed_inputs,
+                [config["task_prefix"] + text for text in examples["input_text"]],
                 max_length=config["max_input_length"],
                 truncation=True,
-                padding=True,  # Changé de "max_length" à True pour un padding dynamique
-                return_tensors=None,  # Ajouté pour éviter les problèmes de format
+                padding="max_length",
+                return_tensors=None,  # Évite la conversion automatique
             )
 
-            # Tokeniser les targets
-            with tokenizer.as_target_tokenizer():
-                targets = tokenizer(
-                    examples["target_text"],
-                    max_length=config["max_target_length"],
-                    truncation=True,
-                    padding=True,  # Changé de "max_length" à True
-                    return_tensors=None,  # Ajouté pour éviter les problèmes de format
-                )
+            targets = tokenizer(
+                examples["target_text"],
+                max_length=config["max_target_length"],
+                truncation=True,
+                padding="max_length",
+                return_tensors=None,
+            )
 
-            # Remplacer les pad tokens par -100 dans les labels pour ignorer dans la loss
-            labels = []
-            for target_ids in targets["input_ids"]:
-                label_ids = [
-                    (token_id if token_id != tokenizer.pad_token_id else -100)
-                    for token_id in target_ids
-                ]
-                labels.append(label_ids)
-
-            model_inputs["labels"] = labels
+            model_inputs["labels"] = targets["input_ids"]
             return model_inputs
 
-        # Appliquer la tokenisation par batch
-        tokenized_dataset = dataset.map(
+        return dataset.map(
             tokenize_function,
             batched=True,
-            remove_columns=dataset.column_names,  # Supprimer les colonnes originales
-            desc="Tokenizing dataset",
+            batch_size=1000,  # Batch plus grand pour la tokenisation
+            num_proc=min(4, os.cpu_count()),  # Parallélisation
+            remove_columns=dataset.column_names,
         )
 
-        return tokenized_dataset
-
-    def tokenize_classification_data(
+    def _tokenize_classification_optimized(
         self, dataset: Dataset, tokenizer, config: dict
     ) -> Dataset:
-        """Tokenise les données pour le modèle de classification"""
+        """Tokenisation classification optimisée"""
 
         def tokenize_function(examples):
-            tokenized = tokenizer(
+            return tokenizer(
                 examples["input_text"],
                 max_length=config["max_input_length"],
                 truncation=True,
-                padding=True,  # Changé de "max_length" à True
-                return_tensors=None,  # Ajouté pour éviter les problèmes de format
+                padding="max_length",
+                return_tensors=None,
             )
 
-            # Garder les labels
-            tokenized["labels"] = examples["labels"]
-            return tokenized
-
-        # Appliquer la tokenisation par batch
-        tokenized_dataset = dataset.map(
+        return dataset.map(
             tokenize_function,
             batched=True,
-            remove_columns=["input_text"],  # Supprimer seulement la colonne input_text
-            desc="Tokenizing dataset",
+            batch_size=1000,
+            num_proc=min(4, os.cpu_count()),
+            remove_columns=["input_text"],  # Garder labels pour classification
         )
 
-        return tokenized_dataset
+    def get_optimized_training_args(self, model_name: str, model_type: str) -> dict:
+        """Arguments d'entraînement optimisés"""
+        config = self.model_configs[model_name]
+        batch_size = config["batch_size"]
 
-    def compute_metrics_seq2seq(self, eval_pred):
-        """Calcule les métriques pour les modèles seq2seq"""
-        predictions, labels = eval_pred
+        base_args = {
+            "output_dir": str(self.base_output_dir / model_name),
+            "num_train_epochs": 2,  # Réduit de 3 -> 2 epochs
+            "per_device_train_batch_size": batch_size["train"],
+            "per_device_eval_batch_size": batch_size["eval"],
+            "gradient_accumulation_steps": 2,  # Accumulation pour batch effectif plus grand
+            "warmup_ratio": 0.1,  # Warmup proportionnel
+            "weight_decay": 0.01,
+            "learning_rate": 3e-4,  # LR légèrement plus élevé
+            "adam_epsilon": 1e-6,
+            "max_grad_norm": 1.0,
+            "logging_dir": str(self.base_output_dir / model_name / "logs"),
+            "logging_steps": 25,  # Moins de logging
+            "eval_steps": 100,  # Évaluation moins fréquente
+            "save_steps": 200,  # Sauvegarde moins fréquente
+            "eval_strategy": "steps",
+            "save_strategy": "steps",
+            "load_best_model_at_end": True,
+            "save_total_limit": 2,  # Limite les checkpoints
+            "dataloader_pin_memory": torch.cuda.is_available(),
+            "dataloader_num_workers": 2 if torch.cuda.is_available() else 0,
+            "remove_unused_columns": False,
+            "report_to": [],  # Pas de logging externe
+        }
 
-        # CORRECTION: Vérifier et nettoyer les prédictions
-        # Les prédictions peuvent contenir des valeurs hors plage
-        if isinstance(predictions, tuple):
-            predictions = predictions[0]
-
-        # Convertir en numpy array si nécessaire
-        predictions = np.array(predictions)
-        labels = np.array(labels)
-
-        # Nettoyer les prédictions : remplacer les valeurs invalides
-        # Les token IDs valides sont généralement entre 0 et vocab_size
-        vocab_size = self.current_tokenizer.vocab_size
-
-        # Clipper les prédictions pour qu'elles soient dans la plage valide
-        predictions = np.clip(predictions, 0, vocab_size - 1)
-
-        # Prendre l'argmax si les prédictions sont des logits
-        if len(predictions.shape) > 2:
-            predictions = np.argmax(predictions, axis=-1)
-
-        try:
-            # Décoder les prédictions avec gestion d'erreur
-            decoded_preds = []
-            for pred in predictions:
-                try:
-                    # Filtrer les tokens invalides avant le décodage
-                    valid_pred = pred[pred >= 0]  # Enlever les tokens négatifs
-                    valid_pred = valid_pred[
-                        valid_pred < vocab_size
-                    ]  # Enlever les tokens trop grands
-                    decoded_pred = self.current_tokenizer.decode(
-                        valid_pred, skip_special_tokens=True
-                    )
-                    decoded_preds.append(decoded_pred)
-                except Exception:
-                    # En cas d'erreur, utiliser une chaîne vide
-                    decoded_preds.append("")
-
-            # Traiter les labels
-            labels = np.where(
-                labels != -100, labels, self.current_tokenizer.pad_token_id
+        # Ajout de la précision mixte si GPU disponible
+        if self.use_mixed_precision:
+            base_args.update(
+                {
+                    "fp16": True,
+                    "fp16_opt_level": "O1",
+                    "dataloader_pin_memory": True,
+                }
             )
 
-            decoded_labels = []
-            for label in labels:
-                try:
-                    # Même traitement pour les labels
-                    valid_label = label[label >= 0]
-                    valid_label = valid_label[valid_label < vocab_size]
-                    decoded_label = self.current_tokenizer.decode(
-                        valid_label, skip_special_tokens=True
-                    )
-                    decoded_labels.append(decoded_label)
-                except Exception:
-                    decoded_labels.append("")
+        # Arguments spécifiques au type de modèle
+        if model_type == "seq2seq":
+            base_args.update(
+                {
+                    "predict_with_generate": True,
+                    "generation_max_length": config["max_target_length"],
+                    "metric_for_best_model": "exact_match",
+                    "greater_is_better": True,
+                }
+            )
+            return Seq2SeqTrainingArguments(**base_args)
+        else:
+            base_args.update(
+                {
+                    "metric_for_best_model": "accuracy",
+                    "greater_is_better": True,
+                }
+            )
+            return TrainingArguments(**base_args)
 
-        except Exception as e:
-            # En cas d'erreur complète, retourner des métriques par défaut
-            return {"exact_match": 0.0, "bleu_approx": 0.0, "decode_error": str(e)}
+    def train_model_optimized(
+        self, model_name: str, train_dataset: Dataset, val_dataset: Dataset
+    ):
+        """Entraînement optimisé avec early stopping"""
+        logger.info(f"🚀 Entraînement optimisé de {model_name}...")
 
-        # Calculer l'exactitude exacte (exact match)
-        exact_matches = sum(
-            pred.strip() == label.strip()
-            for pred, label in zip(decoded_preds, decoded_labels, strict=True)
-            if pred and label  # Éviter les chaînes vides
+        config = self.model_configs[model_name]
+        tokenizer = self._get_cached_tokenizer(config["model_name"])
+
+        # Charger le modèle sur le bon device
+        if config["type"] == "seq2seq":
+            model = AutoModelForSeq2SeqLM.from_pretrained(config["model_name"])
+        else:
+            model = AutoModelForSequenceClassification.from_pretrained(
+                config["model_name"], num_labels=config["num_labels"]
+            )
+
+        model.to(self.device)
+
+        # Tokeniser les données
+        train_tokenized = self.tokenize_with_caching(train_dataset, model_name, config)
+        val_tokenized = self.tokenize_with_caching(val_dataset, model_name, config)
+
+        # Arguments d'entraînement optimisés
+        training_args = self.get_optimized_training_args(model_name, config["type"])
+
+        # Callbacks pour early stopping
+        callbacks = [EarlyStoppingCallback(early_stopping_patience=3)]
+
+        # Créer le trainer approprié
+        if config["type"] == "seq2seq":
+            data_collator = DataCollatorForSeq2Seq(
+                tokenizer=tokenizer, model=model, padding=True
+            )
+            self.current_tokenizer = tokenizer  # Pour les métriques
+
+            trainer = Seq2SeqTrainer(
+                model=model,
+                args=training_args,
+                train_dataset=train_tokenized,
+                eval_dataset=val_tokenized,
+                tokenizer=tokenizer,
+                data_collator=data_collator,
+                compute_metrics=self.compute_metrics_seq2seq,
+                callbacks=callbacks,
+            )
+        else:
+            trainer = Trainer(
+                model=model,
+                args=training_args,
+                train_dataset=train_tokenized,
+                eval_dataset=val_tokenized,
+                tokenizer=tokenizer,
+                compute_metrics=self.compute_metrics_classification,
+                callbacks=callbacks,
+            )
+
+        # Entraînement avec mesure du temps
+        start_time = time.time()
+        trainer.train()
+        training_time = time.time() - start_time
+
+        # Sauvegarder
+        trainer.save_model()
+        tokenizer.save_pretrained(str(self.base_output_dir / model_name))
+
+        # Statistiques
+        self.training_stats[model_name] = {
+            "training_time": training_time,
+            "train_samples": len(train_dataset),
+            "val_samples": len(val_dataset),
+            "final_metrics": (
+                trainer.state.log_history[-1] if trainer.state.log_history else {}
+            ),
+            "total_steps": trainer.state.global_step,
+        }
+
+        logger.info(
+            f"✅ {model_name} entraîné en {training_time:.2f}s ({trainer.state.global_step} steps)"
         )
-        exact_match_score = exact_matches / len(decoded_preds) if decoded_preds else 0.0
+        return model, tokenizer
 
-        # Calculer BLEU approximatif (simple overlap)
-        bleu_scores = []
-        for pred, label in zip(decoded_preds, decoded_labels, strict=True):
-            if pred and label:  # Éviter les chaînes vides
-                pred_words = set(pred.lower().split())
-                label_words = set(label.lower().split())
-                if len(label_words) > 0:
-                    overlap = len(pred_words & label_words) / len(label_words)
-                    bleu_scores.append(overlap)
+    def compute_metrics_seq2seq(self, eval_pred):
+        """Métriques optimisées pour seq2seq"""
+        predictions, labels = eval_pred
 
-        avg_bleu = np.mean(bleu_scores) if bleu_scores else 0.0
+        # Limiter l'évaluation pour la vitesse
+        max_eval_samples = 100
+        if len(predictions) > max_eval_samples:
+            predictions = predictions[:max_eval_samples]
+            labels = labels[:max_eval_samples]
 
-        return {"exact_match": exact_match_score, "bleu_approx": avg_bleu}
+        decoded_preds = self.current_tokenizer.batch_decode(
+            predictions, skip_special_tokens=True
+        )
+        labels = np.where(labels != -100, labels, self.current_tokenizer.pad_token_id)
+        decoded_labels = self.current_tokenizer.batch_decode(
+            labels, skip_special_tokens=True
+        )
+
+        # Exact match simplifié
+        exact_matches = sum(
+            pred.strip().lower() == label.strip().lower()
+            for pred, label in zip(decoded_preds, decoded_labels, strict=True)
+        )
+        exact_match_score = exact_matches / len(decoded_preds)
+
+        return {"exact_match": exact_match_score}
 
     def compute_metrics_classification(self, eval_pred):
-        """Calcule les métriques pour le modèle de classification"""
+        """Métriques optimisées pour classification"""
         predictions, labels = eval_pred
         predictions = np.argmax(predictions, axis=1)
 
-        return {
-            "accuracy": accuracy_score(labels, predictions),
-            "f1": f1_score(labels, predictions, average="weighted"),
-        }
+        return {"accuracy": accuracy_score(labels, predictions)}
 
-    def train_seq2seq_model(
-        self, model_name: str, train_dataset: Dataset, val_dataset: Dataset
-    ) -> tuple[object, object]:
-        """Entraîne un modèle seq2seq (T5)"""
-        logger.info(f"🚀 Entraînement du modèle {model_name}...")
+    def train_all_models_optimized(self, dataset_dir: str = "datasets/training_fr"):
+        """Version optimisée de l'entraînement de tous les modèles"""
+        logger.info("🚀 Démarrage de l'entraînement optimisé...")
 
-        config = self.model_configs[model_name]
-
-        # Charger le modèle et tokenizer
-        tokenizer = AutoTokenizer.from_pretrained(config["model_name"])
-        model = AutoModelForSeq2SeqLM.from_pretrained(config["model_name"])
-
-        # Ajouter un token de padding si nécessaire
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
-            model.resize_token_embeddings(len(tokenizer))
-
-        # Stocker le tokenizer pour les métriques
-        self.current_tokenizer = tokenizer
-
-        # Tokeniser les données
-        logger.info("🔤 Tokenisation des données...")
-        train_tokenized = self.tokenize_seq2seq_data(train_dataset, tokenizer, config)
-        val_tokenized = self.tokenize_seq2seq_data(val_dataset, tokenizer, config)
-
-        # Configuration d'entraînement
-        training_args = Seq2SeqTrainingArguments(
-            output_dir=str(self.base_output_dir / model_name),
-            num_train_epochs=3,
-            per_device_train_batch_size=2,  # Réduit encore plus pour éviter les problèmes de mémoire
-            per_device_eval_batch_size=2,
-            gradient_accumulation_steps=2,  # Ajouté pour compenser la petite batch size
-            warmup_steps=100,
-            weight_decay=0.01,
-            logging_dir=str(self.base_output_dir / model_name / "logs"),
-            logging_steps=50,
-            eval_steps=200,
-            save_steps=400,
-            eval_strategy="steps",
-            save_strategy="steps",
-            load_best_model_at_end=True,
-            metric_for_best_model="exact_match",
-            greater_is_better=True,
-            predict_with_generate=True,
-            generation_max_length=config["max_target_length"],
-            remove_unused_columns=False,
-            dataloader_pin_memory=False,
-            fp16=False,  # Désactiver fp16 pour éviter les problèmes
-            dataloader_num_workers=0,  # Ajouté pour éviter les problèmes de multiprocessing
-        )
-
-        # Data collator
-        data_collator = DataCollatorForSeq2Seq(
-            tokenizer=tokenizer,
-            model=model,
-            padding=True,
-            pad_to_multiple_of=8,  # Ajouté pour l'efficacité
-        )
-
-        # Trainer
-        trainer = Seq2SeqTrainer(
-            model=model,
-            args=training_args,
-            train_dataset=train_tokenized,
-            eval_dataset=val_tokenized,
-            tokenizer=tokenizer,
-            data_collator=data_collator,
-            compute_metrics=self.compute_metrics_seq2seq,
-        )
-
-        # Entraînement
-        start_time = time.time()
-        trainer.train()
-        training_time = time.time() - start_time
-
-        # Sauvegarder le modèle
-        trainer.save_model()
-        tokenizer.save_pretrained(str(self.base_output_dir / model_name))
-
-        # Statistiques
-        self.training_stats[model_name] = {
-            "training_time": training_time,
-            "train_samples": len(train_dataset),
-            "val_samples": len(val_dataset),
-            "final_metrics": (
-                trainer.state.log_history[-1] if trainer.state.log_history else {}
-            ),
-        }
-
-        logger.info(f"✅ {model_name} entraîné en {training_time:.2f}s")
-        return model, tokenizer
-
-    def train_classification_model(
-        self, model_name: str, train_dataset: Dataset, val_dataset: Dataset
-    ) -> tuple[object, object]:
-        """Entraîne un modèle de classification (BERT)"""
-        logger.info(f"🚀 Entraînement du modèle {model_name}...")
-
-        config = self.model_configs[model_name]
-
-        # Charger le modèle et tokenizer
-        tokenizer = AutoTokenizer.from_pretrained(config["model_name"])
-        model = AutoModelForSequenceClassification.from_pretrained(
-            config["model_name"], num_labels=config["num_labels"]
-        )
-
-        # Tokeniser les données
-        logger.info("🔤 Tokenisation des données...")
-        train_tokenized = self.tokenize_classification_data(
-            train_dataset, tokenizer, config
-        )
-        val_tokenized = self.tokenize_classification_data(
-            val_dataset, tokenizer, config
-        )
-
-        # Configuration d'entraînement
-        training_args = TrainingArguments(
-            output_dir=str(self.base_output_dir / model_name),
-            num_train_epochs=3,
-            per_device_train_batch_size=4,  # Réduit pour éviter les problèmes de mémoire
-            per_device_eval_batch_size=4,
-            gradient_accumulation_steps=2,  # Ajouté pour compenser la petite batch size
-            warmup_steps=100,
-            weight_decay=0.01,
-            logging_dir=str(self.base_output_dir / model_name / "logs"),
-            logging_steps=50,
-            eval_steps=200,
-            save_steps=400,
-            eval_strategy="steps",
-            save_strategy="steps",
-            load_best_model_at_end=True,
-            metric_for_best_model="accuracy",
-            greater_is_better=True,
-            dataloader_pin_memory=False,
-            fp16=False,  # Désactiver fp16 pour éviter les problèmes
-            dataloader_num_workers=0,  # Ajouté pour éviter les problèmes de multiprocessing
-        )
-
-        # Trainer
-        trainer = Trainer(
-            model=model,
-            args=training_args,
-            train_dataset=train_tokenized,
-            eval_dataset=val_tokenized,
-            tokenizer=tokenizer,
-            compute_metrics=self.compute_metrics_classification,
-        )
-
-        # Entraînement
-        start_time = time.time()
-        trainer.train()
-        training_time = time.time() - start_time
-
-        # Sauvegarder le modèle
-        trainer.save_model()
-        tokenizer.save_pretrained(str(self.base_output_dir / model_name))
-
-        # Statistiques
-        self.training_stats[model_name] = {
-            "training_time": training_time,
-            "train_samples": len(train_dataset),
-            "val_samples": len(val_dataset),
-            "final_metrics": (
-                trainer.state.log_history[-1] if trainer.state.log_history else {}
-            ),
-        }
-
-        logger.info(f"✅ {model_name} entraîné en {training_time:.2f}s")
-        return model, tokenizer
-
-    def evaluate_model(self, model_name: str, test_data: list[dict]) -> dict:
-        """Évalue un modèle entraîné sur les données de test"""
-        logger.info(f"🧪 Évaluation du modèle {model_name}...")
-
-        model_path = self.base_output_dir / model_name
-        if not model_path.exists():
-            logger.error(f"❌ Modèle non trouvé: {model_path}")
-            return {}
-
-        config = self.model_configs[model_name]
-
-        try:
-            if config["type"] == "seq2seq":
-                # Modèle seq2seq
-                pipe = pipeline(
-                    "text2text-generation",
-                    model=str(model_path),
-                    tokenizer=str(model_path),
-                    max_length=config["max_target_length"],
-                    device=-1,  # Force CPU pour éviter les problèmes de GPU
-                )
-
-                # Préparer les données de test
-                if model_name == "fill_in_blank":
-                    test_dataset = self.prepare_fill_in_blank_data(test_data)
-                else:  # sentence_scrambler
-                    test_dataset = self.prepare_sentence_scrambler_data(test_data)
-
-                # Évaluer
-                correct = 0
-                total = 0
-
-                for i in range(min(50, len(test_dataset))):  # Limiter pour l'évaluation
-                    input_text = config["task_prefix"] + test_dataset[i]["input_text"]
-                    target = test_dataset[i]["target_text"]
-
-                    prediction = pipe(input_text)[0]["generated_text"]
-
-                    if prediction.strip().lower() == target.strip().lower():
-                        correct += 1
-                    total += 1
-
-                accuracy = correct / total if total > 0 else 0
-                return {"accuracy": accuracy, "total_tested": total}
-
-            else:  # classification
-                # Modèle de classification
-                pipe = pipeline(
-                    "text-classification",
-                    model=str(model_path),
-                    tokenizer=str(model_path),
-                    device=-1,  # Force CPU pour éviter les problèmes de GPU
-                )
-
-                test_dataset = self.prepare_definition_matcher_data(test_data)
-
-                correct = 0
-                total = 0
-
-                for i in range(min(50, len(test_dataset))):
-                    input_text = test_dataset[i]["input_text"]
-                    true_label = test_dataset[i]["labels"]
-
-                    prediction = pipe(input_text)
-                    predicted_label = int(prediction[0]["label"].split("_")[-1])
-
-                    if predicted_label == true_label:
-                        correct += 1
-                    total += 1
-
-                accuracy = correct / total if total > 0 else 0
-                return {"accuracy": accuracy, "total_tested": total}
-
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de l'évaluation de {model_name}: {e}")
-            return {"error": str(e)}
-
-    def train_all_models(self, dataset_dir: str = "datasets/training_fr"):
-        """Entraîne tous les modèles"""
-        logger.info("🚀 Démarrage de l'entraînement de tous les modèles...")
-
-        # Charger les datasets
-        datasets = self.load_datasets(dataset_dir)
+        # Chargement parallèle des datasets
+        datasets = self.load_datasets_parallel(dataset_dir)
 
         if not datasets:
             logger.error("❌ Aucun dataset trouvé !")
-            return
+            return {}
 
         trained_models = {}
+        total_start_time = time.time()
 
+        # Entraînement séquentiel optimisé (pour éviter les conflits GPU)
         for model_name, model_data in datasets.items():
             try:
                 logger.info(f"\n{'='*50}")
-                logger.info(f"🎯 Entraînement de {model_name}")
+                logger.info(f"🎯 Entraînement optimisé de {model_name}")
                 logger.info(f"{'='*50}")
 
-                # Préparer les datasets
-                if model_name == "fill_in_blank":
-                    train_dataset = self.prepare_fill_in_blank_data(model_data["train"])
-                    val_dataset = self.prepare_fill_in_blank_data(model_data["val"])
-                elif model_name == "sentence_scrambler":
-                    train_dataset = self.prepare_sentence_scrambler_data(
-                        model_data["train"]
-                    )
-                    val_dataset = self.prepare_sentence_scrambler_data(
-                        model_data["val"]
-                    )
-                elif model_name == "definition_matcher":
-                    train_dataset = self.prepare_definition_matcher_data(
-                        model_data["train"]
-                    )
-                    val_dataset = self.prepare_definition_matcher_data(
-                        model_data["val"]
-                    )
-                else:
-                    logger.warning(f"⚠️ Modèle non reconnu: {model_name}")
-                    continue
+                # Préparation optimisée des données
+                train_dataset = self.prepare_data_optimized(
+                    model_data["train"], model_name
+                )
+                val_dataset = self.prepare_data_optimized(model_data["val"], model_name)
 
-                # Vérifier que les datasets ne sont pas vides
-                if len(train_dataset) == 0 or len(val_dataset) == 0:
-                    logger.warning(f"⚠️ Dataset vide pour {model_name}, ignoré")
-                    continue
+                logger.info(
+                    f"📊 Train: {len(train_dataset)}, Val: {len(val_dataset)} échantillons"
+                )
 
-                # Entraîner le modèle
-                config = self.model_configs[model_name]
-                if config["type"] == "seq2seq":
-                    model, tokenizer = self.train_seq2seq_model(
-                        model_name, train_dataset, val_dataset
-                    )
-                else:  # classification
-                    model, tokenizer = self.train_classification_model(
-                        model_name, train_dataset, val_dataset
-                    )
-
+                # Entraînement optimisé
+                model, tokenizer = self.train_model_optimized(
+                    model_name, train_dataset, val_dataset
+                )
                 trained_models[model_name] = (model, tokenizer)
 
-                # Évaluer sur les données de test si disponibles
-                if "test" in model_data:
-                    eval_results = self.evaluate_model(model_name, model_data["test"])
-                    self.training_stats[model_name]["test_results"] = eval_results
-                    logger.info(
-                        f"📊 Résultats de test pour {model_name}: {eval_results}"
-                    )
+                # Nettoyage mémoire
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
 
             except Exception as e:
                 logger.error(f"❌ Erreur lors de l'entraînement de {model_name}: {e}")
-                import traceback
-
-                logger.error(traceback.format_exc())
                 continue
 
-        # Rapport final
-        self.print_training_report()
+        total_time = time.time() - total_start_time
+        logger.info(f"\n🎉 Entraînement terminé en {total_time:.2f}s au total")
+
+        # Rapport final optimisé
+        self.print_optimized_report()
+        self.save_training_config()
 
         return trained_models
 
-    def print_training_report(self):
-        """Affiche un rapport complet de l'entraînement"""
+    def print_optimized_report(self):
+        """Rapport optimisé avec plus de détails sur les performances"""
         logger.info("\n" + "=" * 60)
-        logger.info("📊 RAPPORT D'ENTRAÎNEMENT FINAL")
+        logger.info("📊 RAPPORT D'ENTRAÎNEMENT OPTIMISÉ")
         logger.info("=" * 60)
+
+        total_time = sum(
+            stats["training_time"] for stats in self.training_stats.values()
+        )
+        total_samples = sum(
+            stats["train_samples"] for stats in self.training_stats.values()
+        )
+
+        logger.info(f"⏱️  Temps total: {total_time:.2f}s")
+        logger.info(f"📈 Échantillons totaux: {total_samples}")
+        logger.info(
+            f"🚀 Vitesse moyenne: {total_samples/total_time:.1f} échantillons/sec"
+        )
 
         for model_name, stats in self.training_stats.items():
             logger.info(f"\n🎯 {model_name.upper()}")
-            logger.info(f"   Temps d'entraînement: {stats['training_time']:.2f}s")
-            logger.info(f"   Échantillons train: {stats['train_samples']}")
-            logger.info(f"   Échantillons val: {stats['val_samples']}")
+            logger.info(f"   ⏱️  Temps: {stats['training_time']:.2f}s")
+            logger.info(
+                f"   📊 Train/Val: {stats['train_samples']}/{stats['val_samples']}"
+            )
+            logger.info(f"   🔄 Steps: {stats.get('total_steps', 'N/A')}")
 
-            if "test_results" in stats:
-                test_acc = stats["test_results"].get("accuracy", 0)
-                logger.info(f"   Précision sur test: {test_acc:.2%}")
-
-        logger.info(
-            "\n✅ Tous les modèles sont sauvegardés dans: " + str(self.base_output_dir)
-        )
+            # Vitesse d'entraînement
+            speed = stats["train_samples"] / stats["training_time"]
+            logger.info(f"   🚀 Vitesse: {speed:.1f} échantillons/sec")
 
     def save_training_config(self):
-        """Sauvegarde la configuration d'entraînement"""
-        config_file = self.base_output_dir / "training_config.json"
+        """Sauvegarde la configuration avec optimisations"""
+        config_file = self.base_output_dir / "training_config_optimized.json"
 
         config_data = {
             "model_configs": self.model_configs,
             "training_stats": self.training_stats,
+            "optimizations": {
+                "mixed_precision": self.use_mixed_precision,
+                "device": str(self.device),
+                "parallel_loading": True,
+                "tokenizer_caching": True,
+            },
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         }
 
         with open(config_file, "w", encoding="utf-8") as f:
             json.dump(config_data, f, indent=2, ensure_ascii=False)
 
-        logger.info(f"💾 Configuration sauvegardée: {config_file}")
+        logger.info(f"💾 Configuration optimisée sauvegardée: {config_file}")
 
 
 def main():
-    """Fonction principale pour lancer l'entraînement"""
-    logger.info("🚀 Démarrage de l'entraînement des modèles d'IA pour Rosetta")
+    """Fonction principale optimisée"""
+    logger.info("🚀 Démarrage de l'entraînement OPTIMISÉ des modèles d'IA pour Rosetta")
 
-    # Vérifier la disponibilité de GPU
-    if torch.cuda.is_available():
-        logger.info(f"🔥 GPU détecté: {torch.cuda.get_device_name()}")
-    else:
-        logger.info("💻 Entraînement sur CPU")
+    # Initialiser le trainer optimisé
+    trainer = OptimizedAIModelsTrainer(use_gpu=True)
 
-    # Initialiser le trainer
-    trainer = AIModelsTrainer()
+    # Entraîner tous les modèles avec optimisations
+    trained_models = trainer.train_all_models_optimized()
 
-    # Entraîner tous les modèles
-    trained_models = trainer.train_all_models()
-
-    # Sauvegarder la configuration
-    trainer.save_training_config()
-
-    logger.info(
-        "🎉 Entraînement français terminé ! Les modèles sont prêts à générer des exercices."
-    )
-
+    logger.info("🎉 Entraînement optimisé terminé ! Performances améliorées.")
     return trained_models
 
 

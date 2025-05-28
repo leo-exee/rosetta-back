@@ -10,7 +10,9 @@ logger = logging.getLogger(__name__)
 
 
 class FrenchRemedeFetcher:
-    def __init__(self, db_path: str = "data/remede.db", delay_range: tuple = (0.5, 2.0)):
+    def __init__(
+        self, db_path: str = "data/remede.db", delay_range: tuple = (0.5, 2.0)
+    ):
         self.delay_range = delay_range
         self.db_path = db_path
         self.stats = {
