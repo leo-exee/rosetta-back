@@ -3,7 +3,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.controllers.exercise_controller import exercise_controller
+from app.controllers.exercise_controller import exercise_router
 from app.models.error_response import ErrorResponse
 
 v1 = FastAPI(
@@ -41,4 +41,4 @@ def error_response_handler(request: Request, error: Exception) -> JSONResponse:
     )
 
 
-v1.include_router(exercise_controller)
+v1.include_router(exercise_router)
