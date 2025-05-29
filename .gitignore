@@ -10,6 +10,7 @@ __pycache__/
 .venv/
 env/
 venv/
+.env.local
 
 # Editor/IDE
 .idea/
@@ -44,5 +45,5 @@ Thumbs.db
 # Specific directories
 data/
 datasets/
-models/
+/models/
 db.sqlite
