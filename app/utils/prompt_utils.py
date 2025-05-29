@@ -3,7 +3,6 @@ from app.models.exercise_enum import ExerciseTypeEnum, LevelEnum
 
 
 def build_prompt(input_dto: ExerciseInDTO) -> str:
-    # Spécificités par niveau
     level_settings = {
         LevelEnum.BEGINNER: {
             "fillInTheBlanks_blanks": 3,
@@ -71,7 +70,6 @@ def build_prompt(input_dto: ExerciseInDTO) -> str:
 
     example_block = type_examples[input_dto.type]
 
-    # Contraintes dynamiques
     constraints_map = {
         ExerciseTypeEnum.FILL_IN_THE_BLANKS: f"- Chaque exercice doit contenir environ {settings['fillInTheBlanks_blanks']} mots à compléter (blanks).",
         ExerciseTypeEnum.DEFINITION_MATCHER: f"- Chaque exercice doit contenir {settings['definitionMatcher_count']} mots et leurs définitions associées.",
