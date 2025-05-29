@@ -1,23 +1,43 @@
-from app.models.exercise_dto import ExerciseInDTO
-from app.services.gemini_service import generate_with_gemini_service, parse_json_list
+import json
+
+from fastapi import status
+
+from app.models.error_response import ErrorResponse
+from app.models.exercise_dto import (
+    ExerciseInDTO,
+    ExerciseListOutDTO,
+)
+from app.services.gemini_service import generate_with_gemini_service
+from app.utils.prompt_utils import build_prompt
 
 
-async def generate_definition_matchers(req: ExerciseInDTO):
-    prompt = f"""Génère {req.count} exercices de type "Definition Matcher" pour des apprenants {req.level} en français dans le contexte "{req.context}".
-Format JSON :
-{{"input":"context|level","output":"mots|||définitions|||ordre","metadata":{{"context":"context","level":"level","words":[],"original_definitions":[],"language":"french"}}}}"""
-    return parse_json_list(generate_with_gemini_service(prompt))
+async def generate_exercises_service(input_dto: ExerciseInDTO) -> ExerciseListOutDTO:
+    prompt = build_prompt(input_dto)
+    raw_response = generate_with_gemini_service(prompt)
+    if not raw_response:
+        raise ErrorResponse(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "Failed to generate exercises.",
+            "FAILED_GENERATE_EXERCISES",
+        )
 
+    try:
+        start = raw_response.find("{")
+        end = raw_response.rfind("}") + 1
+        json_str = raw_response[start:end]
+        json_data = json.loads(json_str)
 
-async def generate_fill_in_blank(req: ExerciseInDTO):
-    prompt = f"""Génère {req.count} exercices de type "Fill in the blank" pour des apprenants {req.level} en français dans le contexte "{req.context}".
-Format JSON :
-{{"input":"context|level|phrase","output":"phrase_incomplete|||distracteurs|||phrase_complete","metadata":{{"context":"context","level":"level","source":"article","difficulty_words":[],"language":"french"}}}}"""
-    return parse_json_list(generate_with_gemini_service(prompt))
+        return ExerciseListOutDTO(**json_data)
 
-
-async def generate_sentence_scrambler(req: ExerciseInDTO):
-    prompt = f"""Génère {req.count} exercices de type "Sentence Scrambler" pour des apprenants {req.level} en français dans le contexte "{req.context}".
-Format JSON :
-{{"input":"context|level|phrase","output":"mélangée|||originale","metadata":{{"context":"context","level":"level","word_count":0,"complexity":0.0,"language":"french"}}}}"""
-    return parse_json_list(generate_with_gemini_service(prompt))
+    except json.JSONDecodeError as e:
+        raise ErrorResponse(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            f"Invalid JSON response: {e}",
+            "INVALID_JSON_RESPONSE",
+        ) from e
+    except Exception as e:
+        raise ErrorResponse(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            f"An unexpected error occurred: {e}",
+            "UNEXPECTED_ERROR",
+        ) from e

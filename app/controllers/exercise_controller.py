@@ -1,11 +1,7 @@
 from fastapi import APIRouter
 
-from app.models.exercise_dto import ExerciseInDTO
-from app.services.exercice_service import (
-    generate_definition_matchers,
-    generate_fill_in_blank,
-    generate_sentence_scrambler,
-)
+from app.models.exercise_dto import ExerciseInDTO, ExerciseListOutDTO
+from app.services.exercice_service import generate_exercises_service
 
 exercise_router = APIRouter(
     prefix="/exercises",
@@ -13,22 +9,11 @@ exercise_router = APIRouter(
 )
 
 
-@exercise_router.post("/definition-matcher")
-async def definition_matcher(req: ExerciseInDTO):
-    return {
-        "type": "definition_matcher",
-        "exercises": await generate_definition_matchers(req),
-    }
-
-
-@exercise_router.post("/fill-in-blank")
-async def fill_in_blank(req: ExerciseInDTO):
-    return {"type": "fill_in_blank", "exercises": await generate_fill_in_blank(req)}
-
-
-@exercise_router.post("/sentence-scrambler")
-async def sentence_scrambler(req: ExerciseInDTO):
-    return {
-        "type": "sentence_scrambler",
-        "exercises": await generate_sentence_scrambler(req),
-    }
+@exercise_router.post(
+    "",
+    summary="Generate Exercises",
+    description="Generate exercises based on the provided context and level.",
+    response_model=ExerciseListOutDTO,
+)
+async def fill_in_blank(req: ExerciseInDTO) -> ExerciseListOutDTO:
+    return await generate_exercises_service(req)
