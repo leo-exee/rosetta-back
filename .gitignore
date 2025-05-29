@@ -44,5 +44,5 @@ Thumbs.db
 # Specific directories
 data/
 datasets/
-models/
+/models/
 db.sqlite
