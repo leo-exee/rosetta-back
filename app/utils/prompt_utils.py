@@ -80,7 +80,7 @@ def build_prompt(input_dto: ExerciseInDTO) -> str:
     example_block = type_examples[input_dto.type]
 
     constraints_map = {
-        ExerciseTypeEnum.FILL_IN_THE_BLANKS: f"""- Chaque exercice doit contenir environ {settings['fillInTheBlanks_blanks']} mots à compléter (blanks).
+        ExerciseTypeEnum.FILL_IN_THE_BLANKS: f"""- Chaque exercice doit contenir environ {settings['fillInTheBlanks_blanks']} mots à compléter (blanks). Les blancs doivent être des mots clés pertinents pour le contexte (par exemple, des verbes, noms ou adjectifs).
 - Fournis une correction explicative en anglais pour chaque blank dans le champ "blanksCorrection" expliquant POURQUOI ce mot est utilisé dans ce contexte (règle grammaticale, logique contextuelle, etc.). Pour l'emplacement des blancs, utilise ___ pour indiquer où le mot doit être inséré.""",
         ExerciseTypeEnum.DEFINITION_MATCHER: f"""- Chaque exercice doit contenir {settings['definitionMatcher_count']} mots et leurs définitions associées.
 - Inclus une traduction complète en anglais de chaque mot et définition dans le champ "translation" pour faciliter la compréhension.""",
