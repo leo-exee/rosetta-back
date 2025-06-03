@@ -68,6 +68,4 @@ class ComprehensionDTO(BaseExerciseDTO):
 class ExerciseListOutDTO(BaseModel):
     context: ContextEnum
     Level: LevelEnum
-    exercises: list[
-        FillInTheBlanksDTO | DefinitionMatcherDTO | ComprehensionDTO | BaseExerciseDTO
-    ]
+    exercises: list[FillInTheBlanksDTO | DefinitionMatcherDTO | ComprehensionDTO]
