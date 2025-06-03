@@ -1,6 +1,24 @@
 from typing import Union
 
 from fastapi import status
+from pydantic import BaseModel
+
+
+class ErrorResponseModel(BaseModel):
+    code: str | int
+    message: str
+    status: str
+    details: list[object] | None = None
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "code": "INTERNAL_SERVER_ERROR",
+                "message": "An unexpected error occurred.",
+                "status": status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "details": [],
+            }
+        }
 
 
 class ErrorResponse(Exception):
