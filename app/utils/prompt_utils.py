@@ -78,14 +78,19 @@ def build_prompt(input_dto: ExerciseInDTO) -> str:
 
     constraints = constraints_map[input_dto.type]
 
+    exercises_count = (
+        "un exercice" if input_dto.count == 1 else f"{input_dto.count} exercices"
+    )
+
     return f"""
 Tu es un générateur d'exercices de français pour une application éducative.
 
 Consignes :
-- Génère exactement {input_dto.count} exercices de type "{input_dto.type.value}".
+- Génère exactement {exercises_count} de type "{input_dto.type.value}".
 - Le contenu doit être adapté au contexte : "{input_dto.context.value}" et au niveau : "{input_dto.level.value}".
 - Tous les champs sont obligatoires.
 - Le niveau influe sur la complexité du vocabulaire, la syntaxe et les consignes.
+- IMPORTANT: Le champ "exercises" doit TOUJOURS être un tableau, même pour un seul exercice.
 
 Contraintes spécifiques :
 {constraints}
@@ -100,5 +105,8 @@ Format de sortie : JSON strictement conforme à ce modèle :
   ]
 }}
 
-⚠️ Ne génère **aucune autre information** que le JSON (pas d’explication, pas de balise de code).
+⚠️ RÈGLES CRITIQUES :
+- Ne génère **aucune autre information** que le JSON (pas d'explication, pas de balise de code).
+- Le champ "exercises" doit être un tableau même pour 1 seul exercice.
+- Respecte exactement la structure JSON demandée.
 """
