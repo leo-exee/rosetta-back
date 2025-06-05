@@ -184,13 +184,6 @@ The project includes an optimized VS Code configuration with:
 - Debug configuration
 - Auto-formatting on save
 
-## 🌍 Environment Variables
-
-| Variable             | Description           | Required |
-| -------------------- | --------------------- | -------- |
-| `GEMINI_API_KEY`     | Google Gemini API key | ✅       |
-| `SENTRY_ENVIRONMENT` | Sentry environment    | ❌       |
-
 ## 🤝 Contributing
 
 1. Fork the project

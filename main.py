@@ -1,11 +1,7 @@
-import os
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.app_v1 import v1
-
-sentry_env = os.getenv("SENTRY_ENVIRONMENT", "development")
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
